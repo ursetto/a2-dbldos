@@ -37,6 +37,11 @@
 "Hint":"Code"},
 
 {
+"Low":85,
+"High":102,
+"Hint":"InlineData"},
+
+{
 "Low":256,
 "High":256,
 "Hint":"Code"},
@@ -59,11 +64,42 @@
 },
 
 "Comments":{
-},
+"0":"Allocate $0A buffers to copy our code into",
+"75":"always",
+"85":"pages (high bytes) to relocate",
+"94":"relocate to these pages",
+"103":"start copy from page $31",
+"112":"save old external command handler",
+"115":"to call at end of our handler",
+"124":"end copy at $3AFF",
+"133":"0",
+"277":"4 chars",
+"307":"5 chars",
+"322":"ignore spaces",
+"342":"Chain to next command handler",
+"383":"Return to BASIC to parse command line"},
 
 "LongComments":{
 "-2147483647":{
-"Text":"6502bench SourceGen v1.7.3",
+"Text":"DBLDOS -- an program by Jason Coleman (1986) which adds 3 unknown commands, DCAT/DLOAD/DSAVE, to BASIC.SYSTEM.\r\n\r\nSee Beneath Apple ProDOS, A-30 (TYPE Command), for an example program that adds commands to the Basic Interpreter. Also see A.3.2, ProDOS 8 Technical Reference Manual.\r\n",
+"BoxMode":false,
+"MaxWidth":80,
+"BackgroundColor":0},
+
+"103":{
+"Text":"Copy $3100-$3AFF to the allocated buffers and install ourselves at the head of the handler chain.",
+"BoxMode":false,
+"MaxWidth":80,
+"BackgroundColor":0},
+
+"12":{
+"Text":"Relocate code into the buffer space.",
+"BoxMode":false,
+"MaxWidth":80,
+"BackgroundColor":0},
+
+"384":{
+"Text":"Once the DCAT command line has been parsed successfully by BASIC, we resume here.",
 "BoxMode":false,
 "MaxWidth":80,
 "BackgroundColor":0}},
@@ -72,10 +108,204 @@
 },
 
 "UserLabels":{
-},
+"12":{
+"Label":"start",
+"Value":12300,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"85":{
+"Label":"relocate_from",
+"Value":12373,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"94":{
+"Label":"relocate_to",
+"Value":12382,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"44":{
+"Label":"lda_src",
+"Value":12332,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"80":{
+"Label":"sta_dst",
+"Value":12368,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"165":{
+"Label":"startup_msg",
+"Value":12453,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"164":{
+"Label":"exit",
+"Value":12452,
+"Source":"User",
+"Type":"NonUniqueLocalAddr",
+"LabelAnno":"None"},
+
+"153":{
+"Label":"write_start_msg",
+"Value":12441,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"256":{
+"Label":"handler_entry",
+"Value":12544,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"103":{
+"Label":"copy_code",
+"Value":12391,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"342":{
+"Label":"chain_to_original",
+"Value":12630,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"283":{
+"Label":"DCAT_str",
+"Value":12571,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"261":{
+"Label":"dcat_char",
+"Value":12549,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"350":{
+"Label":"DLOAD_str",
+"Value":12638,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"345":{
+"Label":"DSAVE_str",
+"Value":12633,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"341":{
+"Label":"next_handler",
+"Value":12629,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"318":{
+"Label":"dsave_char",
+"Value":12606,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"314":{
+"Label":"check_dsave",
+"Value":12602,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"291":{
+"Label":"dload_char",
+"Value":12579,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"287":{
+"Label":"check_dload",
+"Value":12575,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"355":{
+"Label":"dcat",
+"Value":12643,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"384":{
+"Label":"dcat_xtrn",
+"Value":12672,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"}},
 
 "OperandFormats":{
-},
+"85":{
+"Length":9,
+"Format":"Dense",
+"SubFormat":"None",
+"SymbolRef":null},
+
+"94":{
+"Length":9,
+"Format":"Dense",
+"SubFormat":"None",
+"SymbolRef":null},
+
+"115":{
+"Length":3,
+"Format":"NumericLE",
+"SubFormat":"Symbol",
+"SymbolRef":{
+"Label":"chain_to_original",
+"Part":"Low"}},
+
+"121":{
+"Length":3,
+"Format":"NumericLE",
+"SubFormat":"Symbol",
+"SymbolRef":{
+"Label":"chain_to_original",
+"Part":"Low"}},
+
+"362":{
+"Length":2,
+"Format":"NumericLE",
+"SubFormat":"Symbol",
+"SymbolRef":{
+"Label":"dcat_xtrn",
+"Part":"High"}},
+
+"367":{
+"Length":2,
+"Format":"NumericLE",
+"SubFormat":"Symbol",
+"SymbolRef":{
+"Label":"dcat_xtrn",
+"Part":"Low"}}},
 
 "LvTables":{
 },

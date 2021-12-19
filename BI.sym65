@@ -4,7 +4,7 @@
 
 BI_CI_ENTRY @ $BE00         ;Reenter ProDOS/Applesoft
 BI_DOSCMD @ $BE03           ;External entry for command string
-BI_EXTRNCMD @ $BE06         ;Called for added CMD syntaxing
+BI_EXTRNCMD @ $BE06 3       ;Called for added CMD syntaxing
 BI_ERROUT @ $BE09           ;Handles ONERR or prints error
 BI_PRINTERR @ $BE0C         ;Prints error message; number in A
 BI_ERRCODE @ $BE0F          ;ProDOS error code stored here and $DE for Applesoft
@@ -160,7 +160,7 @@ BI_SCLOSE @ $BEDD 2                    ;CLOSE or FLUSH parameter list
 ;; BI_SFLUSH @ $BEDD
 BI_CFREFNUM @ $BEDE
 BI_CCCSPARE @ $BEDF 22                 ;'COPYRIGHT APPLE, 1983'
-BI_GETBUFR @ $BEF5                     ;allocate buffer
-BI_FREBUFR @ $BEF8                     ;free all buffers
+BI_GETBUFR @ $BEF5                     ;Allocate buffers, number in A
+BI_FREBUFR @ $BEF8                     ;Free all buffers
 BI_RSHIMEM @ $BEFB                     ;original HIMEM MSB
 ;; BEFC-BEFF unused
