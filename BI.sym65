@@ -1,0 +1,166 @@
+; The ProDOS 8 BASIC Global Page
+; ProDOS 8 Technical Reference Manual, section A.3
+; Beneath Apple Prodos, 8-2
+
+BI_CI_ENTRY @ $BE00         ;Reenter ProDOS/Applesoft
+BI_DOSCMD @ $BE03           ;External entry for command string
+BI_EXTRNCMD @ $BE06         ;Called for added CMD syntaxing
+BI_ERROUT @ $BE09           ;Handles ONERR or prints error
+BI_PRINTERR @ $BE0C         ;Prints error message; number in A
+BI_ERRCODE @ $BE0F          ;ProDOS error code stored here and $DE for Applesoft
+
+; Default I/O vectors
+
+BI_OUTVECT @ $BE10 16       ;Default output vectors for monitor and slots 1-7
+BI_OUTVECT0 @ $BE10 2       ;Monitor video output routine
+BI_OUTVECT1 @ $BE12 2       ;Default $C100 when ROM present
+BI_OUTVECT2 @ $BE14 2       ;Default $C200 when ROM present
+BI_OUTVECT3 @ $BE16 2       ;Default $C300 when ROM present
+BI_OUTVECT4 @ $BE18 2       ;Default $C400 when ROM present
+BI_OUTVECT5 @ $BE1A 2       ;Default $C500 when ROM present
+BI_OUTVECT6 @ $BE1C 2       ;Default $C600 when ROM present
+BI_OUTVECT7 @ $BE1E 2       ;Default $C700 when ROM present
+BI_INVECT  @ $BE20 16       ;Default input vectors for monitor and slots 1-7
+BI_INVECT0 @ $BE20  2       ;Monitor keyboard input routine
+BI_INVECT1 @ $BE22  2       ;Default $C100 when ROM present
+BI_INVECT2 @ $BE24  2       ;Default $C200 when ROM present
+BI_INVECT3 @ $BE26  2       ;Default $C300 when ROM present
+BI_INVECT3 @ $BE26  2       ;Default $C300 when ROM present
+BI_INVECT4 @ $BE28  2       ;Default $C400 when ROM present
+BI_INVECT5 @ $BE2A  2       ;Default $C500 when ROM present
+BI_INVECT6 @ $BE2C  2       ;Default $C600 when ROM present
+BI_INVECT7 @ $BE2E  2       ;Default $C700 when ROM present
+BI_VECTOUT @ $BE30  2       ;Current character output routine
+BI_VECTIN @ $BE32   2       ;Current character input routine
+BI_VDOSIO @ $BE34   4       ;BI's output intercept address
+;;        @ $BE36           ;BI's input intercept address
+BI_VSYSIO @ $BE38   4       ;Internal redirection of I/O
+BI_DEFSLT @ $BE3C           ;Default slot, set by 'S' parm
+BI_DEFDRV @ $BE3D           ;Default drive, set by 'D' parm
+BI_PREGA @ $BE3E            ;A register save area
+BI_PREGX @ $BE3F            ;X register save area
+BI_PREGY @ $BE40            ;Y register save area
+BI_DTRACE @ $BE41           ;Applesoft trace enable
+BI_STATE @ $BE42            ;0=Imm, >0=Def modes
+BI_EXACTV @ $BE43           ;EXEC file active if bit 7 on
+BI_IFILACTV @ $BE44         ;Input file active if bit 7 on
+BI_OFILACTV @ $BE45         ;Output file active if bit 7 on
+BI_PFXACTV @ $BE46          ;Prefix input active if bit 7 on
+BI_DIRFLG @ $BE47           ;File being accessed is directory
+BI_EDIRFLG @ $BE48          ;End of directory encountered
+BI_STRINGS @ $BE49          ;Counter for free string space
+BI_TBUFPTR @ $BE4A          ;Temporory buffered char count (WRITE)
+BI_INPTR @ $BE4B            ;Input char count during kbd input
+BI_CHRLAST @ $BE4C          ;Last character output (for error detect)
+BI_OPENCNT @ $BE4D          ;Number of open file (except EXEC file)
+BI_EXFILE @ $BE4E           ;Flag to indicate EXEC file being closed
+BI_CATFLAG @ $BE4F          ;File being input is (translated) dir
+BI_XTRNADDR @ $BE50 2       ;Execution address of external cmd (0)
+BI_XLEN @ $BE52             ;Length of command string-1, ('HELP'=3)
+BI_XCNUM @ $BE53            ;BASIC cmd number (external cmd if =0)
+
+; Command parameter PBITS/FBITS bit definitions
+
+;; BI_PFIX   = $80         ;Prefix needs fetching, pathname optional
+;; BI_SLOT   = $40         ;No parameters to be processed
+;; BI_RRUN   = $20         ;Command only valid during program
+;; BI_FNOPT  = $10         ;Filename is optional
+;; BI_CRFLG  = $08         ;CREATE allowed
+;; BI_T      = $04         ;File type
+;; BI_FN2    = $02         ;Filename '2' for RENAME
+;; BI_FN1    = $01         ;Filename expected
+
+; PBITS+1/FBITS+1 definitions:
+
+;; BI_AD     = $80         ;Address
+;; BI_B      = $40         ;Byte
+;; BI_E      = $20         ;End address
+;; BI_L      = $10         ;Length
+;; BI_LINE   = $08         ;'@' line number
+;; BI_SD     = $04         ;Slot and drive numbers
+;; BI_F      = $02         ;Field
+;; BI_R      = $01         ;Record
+;; BI_V      = $00         ;Volume number ignored
+
+BI_PBITS @ $BE54 2           ;Allowed parameter bits
+BI_FBITS @ $BE56 2           ;Found parameter bits
+
+;; BI_PVALS @ $BE58
+BI_VADDR @ $BE58 2           ;Parameter value for 'A' parm
+BI_VBYTE @ $BE5A 3           ;Parameter value for 'B' parm
+BI_VENDA @ $BE5D 2           ;Parameter value for 'E' parm
+BI_VLNTH @ $BE5F 2           ;Parameter value for 'L' parm
+BI_VSLOT @ $BE61             ;Parameter value for 'S' parm
+BI_VDRIV @ $BE62             ;Parameter value for 'D' parm
+BI_VFELD @ $BE63 2           ;Parameter value for 'F' parm
+BI_VRECD @ $BE65 2           ;Parameter value for 'R' parm
+BI_VVOLM @ $BE67             ;Parameter value for 'V' parm
+BI_VLINE @ $BE68 2           ;Parameter value for '@' parm
+;; BI_PTYPE @ $BE6A 1
+BI_VTYPE @ $BE6A             ;Parameter value for 'T' parm
+;; BI_PIOSLT @ $BE6B 1
+BI_VIOSLT @ $BE6B            ;Parameter value for IN# or PR#
+BI_VPATH1 @ $BE6C 2          ;Pathname 1 buffer
+BI_VPATH2 @ $BE6E 2          ;Pathname 2 buffer (RENAME)
+
+BI_GOSYSTEM @ $BE70   ; Make MLI file mgmt ($C0-$D3) call, number in A
+BI_BADCALL @ $BE8B    ; Convert MLI errors to BASIC errors, number in A
+
+; System-call parameter tables
+
+BI_SCREATE @ $BEA0 12
+BI_CRACESS @ $BEA3
+BI_CRFILID @ $BEA4
+BI_CRAUXID @ $BEA5 2
+BI_CRFKIND @ $BEA7
+BI_SSGPRFX @ $BEAC 3         ; GETPREFIX, SETPREFIX, DESTROY param list
+BI_SDSTROY @ $BEAC 3
+BI_SRECNAME @ $BEAF 5
+BI_SSGINFO @ $BEB4 3         ;P.CNT=7 if SET_FILE_INFO, =A if GET_FILE_INFO
+BI_FIACESS @ $BEB7           ;Access used by lock/unlock
+BI_FIFILID @ $BEB8           ;FILE ID is type specifier
+BI_FIAUXID @ $BEB9 2         ;Aux_id is used for load addr and record length
+BI_FIFKIND @ $BEBB           ;Identifies trees vs. directories
+BI_FIBLOKS @ $BEBC 2         ;Used by CAT commands for root dir
+BI_FIMDATE @ $BEBE 8         ;Modification date & time
+;;         @ BEC0 2          ;should always be zeroed before call
+;;         @ BEC2 2          ;Create date ignored
+;;         @ BEC4 2          ;Create date ignored
+
+BI_SONLINE @ $BEC6 5         ; Param list of ONLINE, etc
+;; BI_SSETMRK @ $BEC6
+;; BI_SGETMRK @ $BEC6
+;; BI_SSETEOF @ $BEC6
+;; BI_SGETEOF @ $BEC6
+;; BI_SSETBUF @ $BEC6
+;; BI_SGETBUF @ $BEC6
+BI_SUNITNUM @ $BEC7          ; Unit or reference number
+;; BI_SBUFREF @ $BEC7
+;; BI_SREFNUM @ $BEC7
+BI_SBUFADR @ $BEC8 3         ;Some calls use 2 bytes; MRK & EOF use 3
+;; BI_SDATPTR @ $BEC8
+;; BI_SMARK @ $BEC8
+;; BI_SEOF @ $BEC8
+
+BI_SOPEN @ $BECB 9           ; OPEN param list
+BI_OSYSBUF @ $BECE 2
+BI_OREFNUM @ $BED0
+BI_SNEWLIN @ $BED1
+BI_NEWLREF @ $BED2           ;Reference number
+BI_NLINEBL @ $BED3           ;Newline character is always CR
+
+BI_SREAD @ $BED5 8           ; READ and WRITE param list
+;; BI_SWRITE @ $BED5
+BI_RWREFNUM @ $BED6
+BI_RWDATA @ $BED7 2          ;Pointer to data to be read/written
+BI_RWCOUNT @ $BED9 2         ;Number of bytes to be read/written
+BI_RWTRANS @ $BEDB 2         ;returned # of bytes read/written
+
+BI_SCLOSE @ $BEDD 2                    ; CLOSE or FLUSH parameter list
+;; BI_SFLUSH @ $BEDD
+BI_CFREFNUM @ $BEDE
+BI_CCCSPARE @ $BEDF 22                 ; 'COPYRIGHT APPLE, 1983'
+BI_GETBUFR @ $BEF5                     ; allocate buffer
+BI_FREBUFR @ $BEF8                     ; free all buffers
+BI_RSHIMEM @ $BEFB                     ; original HIMEM MSB
+;; BEFC-BEFF unused
