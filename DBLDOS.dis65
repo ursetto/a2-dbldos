@@ -81,7 +81,7 @@
 
 "LongComments":{
 "-2147483647":{
-"Text":"DBLDOS -- an program by Jason Coleman (1986) which adds 3 unknown commands, DCAT/DLOAD/DSAVE, to BASIC.SYSTEM.\r\n\r\nSee Beneath Apple ProDOS, A-30 (TYPE Command), for an example program that adds commands to the Basic Interpreter. Also see A.3.2, ProDOS 8 Technical Reference Manual.\r\n",
+"Text":"DBLDOS -- a program by Jason Coleman (1986) which adds 3 commands, DCAT/DLOAD/DSAVE, to BASIC.SYSTEM.\r\n\r\nDCAT is experimentally confirmed to CATALOG DOS 3.3 disks, and DLOAD to load BASIC and binary programs from a DOS 3.3 disk.\r\n\r\nSee Beneath Apple ProDOS, A-30 (TYPE Command), for an example program that adds commands to the Basic Interpreter. Also see A.3.2, ProDOS 8 Technical Reference Manual.\r\n",
 "BoxMode":false,
 "MaxWidth":80,
 "BackgroundColor":0},
@@ -258,6 +258,13 @@
 "384":{
 "Label":"dcat_xtrn",
 "Value":12672,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"668":{
+"Label":"disk_volume_str",
+"Value":12956,
 "Source":"User",
 "Type":"GlobalAddr",
 "LabelAnno":"None"}},
