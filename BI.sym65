@@ -103,8 +103,8 @@ BI_VIOSLT @ $BE6B            ;Parameter value for IN# or PR#
 BI_VPATH1 @ $BE6C 2          ;Pathname 1 buffer
 BI_VPATH2 @ $BE6E 2          ;Pathname 2 buffer (RENAME)
 
-BI_GOSYSTEM @ $BE70   ; Make MLI file mgmt ($C0-$D3) call, number in A
-BI_BADCALL @ $BE8B    ; Convert MLI errors to BASIC errors, number in A
+BI_GOSYSTEM @ $BE70   ;Make MLI file mgmt ($C0-$D3) call, number in A
+BI_BADCALL @ $BE8B    ;Convert MLI errors to BASIC errors, number in A
 
 ; System-call parameter tables
 
@@ -113,7 +113,7 @@ BI_CRACESS @ $BEA3
 BI_CRFILID @ $BEA4
 BI_CRAUXID @ $BEA5 2
 BI_CRFKIND @ $BEA7
-BI_SSGPRFX @ $BEAC 3         ; GETPREFIX, SETPREFIX, DESTROY param list
+BI_SSGPRFX @ $BEAC 3         ;GETPREFIX, SETPREFIX, DESTROY param list
 BI_SDSTROY @ $BEAC 3
 BI_SRECNAME @ $BEAF 5
 BI_SSGINFO @ $BEB4 3         ;P.CNT=7 if SET_FILE_INFO, =A if GET_FILE_INFO
@@ -127,14 +127,14 @@ BI_FIMDATE @ $BEBE 8         ;Modification date & time
 ;;         @ BEC2 2          ;Create date ignored
 ;;         @ BEC4 2          ;Create date ignored
 
-BI_SONLINE @ $BEC6 5         ; Param list of ONLINE, etc
+BI_SONLINE @ $BEC6 5         ;Param list of ONLINE, etc
 ;; BI_SSETMRK @ $BEC6
 ;; BI_SGETMRK @ $BEC6
 ;; BI_SSETEOF @ $BEC6
 ;; BI_SGETEOF @ $BEC6
 ;; BI_SSETBUF @ $BEC6
 ;; BI_SGETBUF @ $BEC6
-BI_SUNITNUM @ $BEC7          ; Unit or reference number
+BI_SUNITNUM @ $BEC7          ;Unit or reference number
 ;; BI_SBUFREF @ $BEC7
 ;; BI_SREFNUM @ $BEC7
 BI_SBUFADR @ $BEC8 3         ;Some calls use 2 bytes; MRK & EOF use 3
@@ -142,25 +142,25 @@ BI_SBUFADR @ $BEC8 3         ;Some calls use 2 bytes; MRK & EOF use 3
 ;; BI_SMARK @ $BEC8
 ;; BI_SEOF @ $BEC8
 
-BI_SOPEN @ $BECB 9           ; OPEN param list
+BI_SOPEN @ $BECB 9           ;OPEN param list
 BI_OSYSBUF @ $BECE 2
 BI_OREFNUM @ $BED0
 BI_SNEWLIN @ $BED1
 BI_NEWLREF @ $BED2           ;Reference number
 BI_NLINEBL @ $BED3           ;Newline character is always CR
 
-BI_SREAD @ $BED5 8           ; READ and WRITE param list
+BI_SREAD @ $BED5 8           ;READ and WRITE param list
 ;; BI_SWRITE @ $BED5
 BI_RWREFNUM @ $BED6
 BI_RWDATA @ $BED7 2          ;Pointer to data to be read/written
 BI_RWCOUNT @ $BED9 2         ;Number of bytes to be read/written
 BI_RWTRANS @ $BEDB 2         ;returned # of bytes read/written
 
-BI_SCLOSE @ $BEDD 2                    ; CLOSE or FLUSH parameter list
+BI_SCLOSE @ $BEDD 2                    ;CLOSE or FLUSH parameter list
 ;; BI_SFLUSH @ $BEDD
 BI_CFREFNUM @ $BEDE
-BI_CCCSPARE @ $BEDF 22                 ; 'COPYRIGHT APPLE, 1983'
-BI_GETBUFR @ $BEF5                     ; allocate buffer
-BI_FREBUFR @ $BEF8                     ; free all buffers
-BI_RSHIMEM @ $BEFB                     ; original HIMEM MSB
+BI_CCCSPARE @ $BEDF 22                 ;'COPYRIGHT APPLE, 1983'
+BI_GETBUFR @ $BEF5                     ;allocate buffer
+BI_FREBUFR @ $BEF8                     ;free all buffers
+BI_RSHIMEM @ $BEFB                     ;original HIMEM MSB
 ;; BEFC-BEFF unused
