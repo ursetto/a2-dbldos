@@ -1,0 +1,1350 @@
+                   ; DBLDOS -- a program by Jason Coleman (1986) which adds 3 commands,
+                   ; DCAT/DLOAD/DSAVE, to BASIC.SYSTEM.
+                   ; 
+                   ; DCAT is experimentally confirmed to CATALOG DOS 3.3 disks, and DLOAD to load
+                   ; BASIC and binary programs from a DOS 3.3 disk.
+                   ; 
+                   ; See Beneath Apple ProDOS, A-30 (TYPE Command), for an example program that
+                   ; adds commands to the Basic Interpreter. Also see A.3.2, ProDOS 8 Technical
+                   ; Reference Manual.
+                   P8_READ_BLOCK         .eq     $80    {const}          ;(3:Unit/1,Buff,BlkNum)
+                   P8_WRITE_BLOCK        .eq     $81    {const}          ;(3:Unit/1,Buff,BlkNum)
+                   MON_A1L               .eq     $3c                     ;general purpose
+                   MON_A1H               .eq     $3d                     ;general purpose
+                   MON_A2L               .eq     $3e                     ;general purpose
+                   MON_A2H               .eq     $3f                     ;general purpose
+                   MON_A4L               .eq     $42                     ;general purpose
+                   MON_A4H               .eq     $43                     ;general purpose
+                   BI_EXTRNCMD           .eq     $be06  {addr/3}         ;Called for added CMD syntaxing
+                   BI_ERROUT             .eq     $be09                   ;Handles ONERR or prints error
+                   BI_DEFSLT             .eq     $be3c                   ;Default slot, set by 'S' parm
+                   BI_DEFDRV             .eq     $be3d                   ;Default drive, set by 'D' parm
+                   BI_XTRNADDR           .eq     $be50  {addr/2}         ;Execution address of external cmd (0)
+                   BI_XLEN               .eq     $be52                   ;Length of command string-1, ('HELP'=3)
+                   BI_XCNUM              .eq     $be53                   ;BASIC cmd number (external cmd if =0)
+                   BI_PBITS              .eq     $be54  {addr/2}         ;Allowed parameter bits
+                   BI_FBITS              .eq     $be56  {addr/2}         ;Found parameter bits
+                   BI_VADDR              .eq     $be58  {addr/2}         ;Parameter value for 'A' parm
+                   BI_VLNTH              .eq     $be5f  {addr/2}         ;Parameter value for 'L' parm
+                   BI_VSLOT              .eq     $be61                   ;Parameter value for 'S' parm
+                   BI_VDRIV              .eq     $be62                   ;Parameter value for 'D' parm
+                   BI_GETBUFR            .eq     $bef5                   ;Allocate buffers, number in A
+                   P8_MLI                .eq     $bf00                   ;ProDOS MLI call entry point
+                   KBD                   .eq     $c000                   ;R last key pressed + 128
+                   KBDSTRB               .eq     $c010                   ;RW keyboard strobe
+                   MON_CR                .eq     $fc62                   ;perform a carriage return
+                   MON_COUT              .eq     $fded                   ;print Acc to output device via $36-37
+                   MON_MOVE              .eq     $fe2c                   ;move bytes from A1 to A4 until A1=A2
+
+                                         .org    $3000
+3000: a9 0a                              lda     #$0a                    ;Allocate $0A buffers to copy our code into
+3002: 20 f5 be                           jsr     BI_GETBUFR
+3005: 90 05                              bcc     start
+3007: a9 0e                              lda     #$0e
+3009: 4c 09 be                           jmp     BI_ERROUT
+
+                   ; Relocate code into the buffer space.
+300c: aa           start                 tax
+300d: a0 00                              ldy     #$00
+300f: 8a           L300F                 txa
+3010: 99 5e 30                           sta     relocate_to,y
+3013: e8                                 inx
+3014: c8                                 iny
+3015: c0 07                              cpy     #$07
+3017: 90 f6                              bcc     L300F
+3019: 8e db 38                           stx     L38D9+2
+301c: 8e f0 38                           stx     L38EE+2
+301f: e8                                 inx
+3020: 8a                                 txa
+3021: 99 5e 30                           sta     relocate_to,y
+3024: e8                                 inx
+3025: c8                                 iny
+3026: 8a                                 txa
+3027: 99 5e 30                           sta     relocate_to,y
+302a: a0 00                              ldy     #$00
+302c: b9 00 31     lda_src               lda     handler_entry,y
+302f: a2 00                              ldx     #$00
+3031: dd 55 30     L3031                 cmp     relocate_from,x
+3034: f0 17                              beq     L304D
+3036: e8                                 inx
+3037: e0 09                              cpx     #$09
+3039: 90 f6                              bcc     L3031
+303b: c8           L303B                 iny
+303c: d0 ee                              bne     lda_src
+303e: ee 2e 30                           inc     lda_src+2
+3041: ee 52 30                           inc     sta_dst+2
+3044: ad 2e 30                           lda     lda_src+2
+3047: c9 3b                              cmp     #$3b
+3049: 90 e1                              bcc     lda_src
+304b: b0 1a                              bcs     copy_code               ;always
+
+304d: bd 5e 30     L304D                 lda     relocate_to,x
+3050: 99 00 31     sta_dst               sta     handler_entry,y
+3053: d0 e6                              bne     L303B
+3055: 31 32 33 34+ relocate_from         .bulk   31323334353637393a      ;pages (high bytes) to relocate
+305e: 00 00 00 00+ relocate_to           .bulk   000000000000000000      ;relocate to these pages
+                   ; Copy $3100-$3AFF to the allocated buffers and install ourselves at the head of
+                   ; the handler chain.
+3067: a9 31        copy_code             lda     #$31                    ;start copy from page $31
+3069: 85 3d                              sta     MON_A1H
+306b: a9 37                              lda     #$37
+306d: 8d b7 36                           sta     L36B6+1
+3070: ad 07 be                           lda     BI_EXTRNCMD+1           ;save old external command handler
+3073: 8d 57 31                           sta     chain_to_original+1     ;to call at end of our handler
+3076: ad 08 be                           lda     BI_EXTRNCMD+2
+3079: 8d 58 31                           sta     chain_to_original+2
+307c: a9 3a                              lda     #$3a                    ;end copy at $3AFF
+307e: 85 3f                              sta     MON_A2H
+3080: a0 ff                              ldy     #$ff
+3082: 84 3e                              sty     MON_A2L
+3084: c8                                 iny
+3085: 84 3c                              sty     MON_A1L                 ;0
+3087: 84 42                              sty     MON_A4L
+3089: 8c 07 be                           sty     BI_EXTRNCMD+1
+308c: ad 5e 30                           lda     relocate_to
+308f: 85 43                              sta     MON_A4H
+3091: 8d 08 be                           sta     BI_EXTRNCMD+2
+3094: 20 2c fe                           jsr     MON_MOVE
+3097: a0 00                              ldy     #$00
+3099: b9 a5 30     write_start_msg       lda     startup_msg,y
+309c: f0 06                              beq     @exit
+309e: 20 ed fd                           jsr     MON_COUT
+30a1: c8                                 iny
+30a2: d0 f5                              bne     write_start_msg
+30a4: 60           @exit                 rts
+
+30a5: c4 c3 c1 d4+ startup_msg           .str    ↑“DCAT, DSAVE, AND DLOAD NOW INSTALLED”,$8d,“WRITTEN BY JASON C”
+                                          +      “OLEMAN, JULY, 1986”,$8d,$8d
+30f0: 00 00 00 00+                       .fill   16,$00
+
+3100: d8           handler_entry         cld
+3101: a0 00                              ldy     #$00
+3103: a2 00                              ldx     #$00
+3105: b9 00 02     dcat_char             lda     $0200,y
+3108: c8                                 iny
+3109: c9 a0                              cmp     #$a0
+310b: f0 f8                              beq     dcat_char
+310d: 29 df                              and     #$df
+310f: dd 1b 31                           cmp     DCAT_str,x
+3112: d0 0b                              bne     check_dload
+3114: e8                                 inx
+3115: e0 04                              cpx     #$04                    ;4 chars
+3117: f0 4a                              beq     dcat
+3119: d0 ea                              bne     dcat_char
+
+311b: c4 c3 c1 d4  DCAT_str              .str    ↑“DCAT”
+
+311f: a0 00        check_dload           ldy     #$00
+3121: a2 00                              ldx     #$00
+3123: b9 00 02     dload_char            lda     $0200,y
+3126: c8                                 iny
+3127: c9 a0                              cmp     #$a0
+3129: f0 f8                              beq     dload_char
+312b: 29 df                              and     #$df
+312d: dd 5e 31                           cmp     DLOAD_str,x
+3130: d0 08                              bne     check_dsave
+3132: e8                                 inx
+3133: e0 05                              cpx     #$05                    ;5 chars
+3135: d0 ec                              bne     dload_char
+3137: 4c d4 32                           jmp     L32D4
+
+313a: a0 00        check_dsave           ldy     #$00
+313c: a2 00                              ldx     #$00
+313e: b9 00 02     dsave_char            lda     $0200,y
+3141: c8                                 iny
+3142: c9 a0                              cmp     #$a0                    ;ignore spaces
+3144: f0 f8                              beq     dsave_char
+3146: 29 df                              and     #$df
+3148: dd 59 31                           cmp     DSAVE_str,x
+314b: d0 08                              bne     next_handler
+314d: e8                                 inx
+314e: e0 05                              cpx     #$05
+3150: d0 ec                              bne     dsave_char
+3152: 4c 40 35                           jmp     L3540
+
+3155: 38           next_handler          sec
+3156: 4c 00 00     chain_to_original     jmp     $0000                   ;Chain to next command handler
+
+3159: c4 d3 c1 d6+ DSAVE_str             .str    ↑“DSAVE”
+315e: c4 cc cf c1+ DLOAD_str             .str    ↑“DLOAD”
+
+3163: 8e 55 be     dcat                  stx     BI_PBITS+1
+3166: ca                                 dex
+3167: 8e 52 be                           stx     BI_XLEN
+316a: a9 31                              lda     #>dcat_xtrn
+316c: 8d 51 be                           sta     BI_XTRNADDR+1
+316f: a9 80                              lda     #<dcat_xtrn
+3171: 8d 50 be                           sta     BI_XTRNADDR
+3174: a9 00                              lda     #$00
+3176: 8d 53 be                           sta     BI_XCNUM
+3179: a9 10                              lda     #$10
+317b: 8d 54 be                           sta     BI_PBITS
+317e: 18                                 clc
+317f: 60                                 rts                             ;Return to BASIC to parse command line
+
+                   ; Once the DCAT command line has been parsed successfully by BASIC, we resume
+                   ; here.
+3180: ad 61 be     dcat_xtrn             lda     BI_VSLOT
+3183: 8d 3c be                           sta     BI_DEFSLT
+3186: 0a                                 asl     A
+3187: 0a                                 asl     A
+3188: 0a                                 asl     A
+3189: 0a                                 asl     A
+318a: ae 62 be                           ldx     BI_VDRIV
+318d: 8e 3d be                           stx     BI_DEFDRV
+3190: ca                                 dex
+3191: f0 02                              beq     L3195
+3193: 09 80                              ora     #$80
+3195: 8d 84 39     L3195                 sta     L3984
+3198: a9 80                              lda     #$80
+319a: 8d 83 39                           sta     L3983
+319d: a9 11                              lda     #$11
+319f: a0 00                              ldy     #$00
+31a1: 8d 87 39                           sta     L3987
+31a4: 8c 88 39                           sty     L3988
+31a7: a5 74                              lda     $74
+31a9: 8d 86 39                           sta     L3986
+31ac: a9 00                              lda     #$00
+31ae: 8d 85 39                           sta     L3985
+31b1: a0 39                              ldy     #$39
+31b3: a9 83                              lda     #$83
+31b5: 20 18 39                           jsr     L3918
+31b8: 90 03                              bcc     L31BD
+31ba: 4c 7f 39                           jmp     L397F
+
+31bd: 20 62 fc     L31BD                 jsr     MON_CR
+31c0: a0 06                              ldy     #$06
+31c2: b1 73                              lda     ($73),y
+31c4: 85 02                              sta     $02
+31c6: a0 0a                              ldy     #$0a
+31c8: b9 9c 32     L31C8                 lda     disk_volume_str,y
+31cb: 20 ed fd                           jsr     MON_COUT
+31ce: 88                                 dey
+31cf: 10 f7                              bpl     L31C8
+31d1: a9 a0                              lda     #$a0
+31d3: 20 ed fd                           jsr     MON_COUT
+31d6: a5 02                              lda     $02
+31d8: 20 a7 32                           jsr     L32A7
+31db: 20 62 fc                           jsr     MON_CR
+31de: 20 62 fc                           jsr     MON_CR
+31e1: a0 0f                              ldy     #$0f
+31e3: 8c 88 39                           sty     L3988
+31e6: a0 39        L31E6                 ldy     #$39
+31e8: a9 83                              lda     #$83
+31ea: 20 18 39                           jsr     L3918
+31ed: 90 03                              bcc     L31F2
+31ef: 4c 7f 39                           jmp     L397F
+
+31f2: a5 74        L31F2                 lda     $74
+31f4: 85 01                              sta     $01
+31f6: a5 73                              lda     $73
+31f8: 85 00                              sta     $00
+31fa: a0 0b                              ldy     #$0b
+31fc: 84 03        L31FC                 sty     $03
+31fe: b1 00                              lda     ($00),y
+3200: d0 03                              bne     L3205
+3202: 4c 92 32                           jmp     L3292
+
+3205: c9 ff        L3205                 cmp     #$ff
+3207: f0 76                              beq     L327F
+3209: c8                                 iny
+320a: c8                                 iny
+320b: b1 00                              lda     ($00),y
+320d: 30 08                              bmi     L3217
+320f: a9 a0                              lda     #$a0
+3211: 20 ed fd                           jsr     MON_COUT
+3214: 4c 1c 32                           jmp     L321C
+
+3217: a9 aa        L3217                 lda     #$aa
+3219: 20 ed fd                           jsr     MON_COUT
+321c: b1 00        L321C                 lda     ($00),y
+321e: 29 7f                              and     #$7f
+3220: f0 0e                              beq     L3230
+3222: c9 01                              cmp     #$01
+3224: f0 0e                              beq     L3234
+3226: c9 02                              cmp     #$02
+3228: f0 0e                              beq     L3238
+322a: c9 04                              cmp     #$04
+322c: f0 0e                              beq     L323C
+322e: d0 4f                              bne     L327F
+
+3230: a9 d4        L3230                 lda     #$d4
+3232: d0 0a                              bne     L323E
+
+3234: a9 c9        L3234                 lda     #$c9
+3236: d0 06                              bne     L323E
+
+3238: a9 c1        L3238                 lda     #$c1
+323a: d0 02                              bne     L323E
+
+323c: a9 c2        L323C                 lda     #$c2
+323e: 20 ed fd     L323E                 jsr     MON_COUT
+3241: a9 a0                              lda     #$a0
+3243: 20 ed fd                           jsr     MON_COUT
+3246: a5 03                              lda     $03
+3248: 18                                 clc
+3249: 69 21                              adc     #$21
+324b: a8                                 tay
+324c: b1 00                              lda     ($00),y
+324e: 20 a7 32                           jsr     L32A7
+3251: a9 a0                              lda     #$a0
+3253: 20 ed fd                           jsr     MON_COUT
+3256: a4 03                              ldy     $03
+3258: c8                                 iny
+3259: c8                                 iny
+325a: c8                                 iny
+325b: a2 00                              ldx     #$00
+325d: b1 00        L325D                 lda     ($00),y
+325f: 20 ed fd                           jsr     MON_COUT
+3262: c8                                 iny
+3263: e8                                 inx
+3264: e0 1d                              cpx     #$1d
+3266: d0 f5                              bne     L325D
+3268: 20 62 fc                           jsr     MON_CR
+326b: ad 00 c0                           lda     KBD
+326e: 10 0f                              bpl     L327F
+3270: a9 00                              lda     #$00
+3272: 8d 10 c0                           sta     KBDSTRB
+3275: ad 00 c0     L3275                 lda     KBD
+3278: 10 fb                              bpl     L3275
+327a: a9 00                              lda     #$00
+327c: 8d 10 c0                           sta     KBDSTRB
+327f: a5 03        L327F                 lda     $03
+3281: 18                                 clc
+3282: 69 23                              adc     #$23
+3284: a8                                 tay
+3285: b0 03                              bcs     L328A
+3287: 4c fc 31                           jmp     L31FC
+
+328a: ce 88 39     L328A                 dec     L3988
+328d: f0 03                              beq     L3292
+328f: 4c e6 31                           jmp     L31E6
+
+3292: 20 62 fc     L3292                 jsr     MON_CR
+3295: 20 62 fc                           jsr     MON_CR
+3298: 18                                 clc
+3299: a9 00                              lda     #$00
+329b: 60                                 rts
+
+329c: c5 cd d5 cc+ disk_volume_str       .str    ↑“EMULOV KSID”
+
+32a7: 8d cf 32     L32A7                 sta     L32CF
+32aa: a0 02                              ldy     #$02
+32ac: a9 00        L32AC                 lda     #$00
+32ae: 48                                 pha
+32af: ad cf 32     L32AF                 lda     L32CF
+32b2: d9 d1 32                           cmp     L32D1,y
+32b5: 90 0e                              bcc     L32C5
+32b7: f9 d1 32                           sbc     L32D1,y
+32ba: 8d cf 32                           sta     L32CF
+32bd: 68                                 pla
+32be: 18                                 clc
+32bf: 69 01                              adc     #$01
+32c1: 48                                 pha
+32c2: 4c af 32                           jmp     L32AF
+
+32c5: 68           L32C5                 pla
+32c6: 09 b0                              ora     #$b0
+32c8: 20 ed fd                           jsr     MON_COUT
+32cb: 88                                 dey
+32cc: 10 de                              bpl     L32AC
+32ce: 60                                 rts
+
+32cf: 00           L32CF                 .dd1    $00
+32d0: 00                                 .dd1    $00
+32d1: 01           L32D1                 .dd1    $01
+32d2: 0a                                 .dd1    $0a
+32d3: 64                                 .dd1    $64
+
+32d4: a2 00        L32D4                 ldx     #$00
+32d6: b9 00 02     L32D6                 lda     $0200,y
+32d9: c8                                 iny
+32da: c9 8d                              cmp     #$8d
+32dc: f0 1c                              beq     L32FA
+32de: c9 a0                              cmp     #$a0
+32e0: f0 f4                              beq     L32D6
+32e2: c9 8d        L32E2                 cmp     #$8d
+32e4: f0 16                              beq     L32FC
+32e6: c9 ac                              cmp     #$ac
+32e8: f0 12                              beq     L32FC
+32ea: c9 e0                              cmp     #$e0
+32ec: 90 02                              bcc     L32F0
+32ee: 29 df                              and     #$df
+32f0: 9d 01 02     L32F0                 sta     $0201,x
+32f3: e8                                 inx
+32f4: b9 00 02                           lda     $0200,y
+32f7: c8                                 iny
+32f8: d0 e8                              bne     L32E2
+32fa: 38           L32FA                 sec
+32fb: 60                                 rts
+
+32fc: e0 1f        L32FC                 cpx     #$1f
+32fe: 90 02                              bcc     L3302
+3300: a2 1e                              ldx     #$1e
+3302: 8e 00 02     L3302                 stx     $0200
+3305: 88                                 dey
+3306: 8c 52 be                           sty     BI_XLEN
+3309: a9 24                              lda     #$24
+330b: 8d 50 be                           sta     BI_XTRNADDR
+330e: a9 33                              lda     #$33
+3310: 8d 51 be                           sta     BI_XTRNADDR+1
+3313: a9 00                              lda     #$00
+3315: 8d 53 be                           sta     BI_XCNUM
+3318: a9 10                              lda     #$10
+331a: 8d 54 be                           sta     BI_PBITS
+331d: a9 84                              lda     #$84
+331f: 8d 55 be                           sta     BI_PBITS+1
+3322: 18                                 clc
+3323: 60                                 rts
+
+3324: ad 61 be                           lda     BI_VSLOT
+3327: 8d 3c be                           sta     BI_DEFSLT
+332a: 0a                                 asl     A
+332b: 0a                                 asl     A
+332c: 0a                                 asl     A
+332d: 0a                                 asl     A
+332e: ae 62 be                           ldx     BI_VDRIV
+3331: 8e 3d be                           stx     BI_DEFDRV
+3334: ca                                 dex
+3335: f0 02                              beq     L3339
+3337: 09 80                              ora     #$80
+3339: 8d 84 39     L3339                 sta     L3984
+333c: a5 74                              lda     $74
+333e: 8d 86 39                           sta     L3986
+3341: a9 00                              lda     #$00
+3343: 8d 85 39                           sta     L3985
+3346: a9 11                              lda     #$11
+3348: 8d 87 39                           sta     L3987
+334b: a9 0f                              lda     #$0f
+334d: 8d 88 39                           sta     L3988
+3350: a0 39        L3350                 ldy     #$39
+3352: a9 83                              lda     #$83
+3354: 20 18 39                           jsr     L3918
+3357: 90 03                              bcc     L335C
+3359: 4c 7f 39                           jmp     L397F
+
+335c: a9 0e        L335C                 lda     #$0e
+335e: a8           L335E                 tay
+335f: a2 00                              ldx     #$00
+3361: 84 02                              sty     $02
+3363: b1 73        L3363                 lda     ($73),y
+3365: f0 20                              beq     L3387
+3367: dd 01 02                           cmp     $0201,x
+336a: d0 09                              bne     L3375
+336c: e8                                 inx
+336d: ec 00 02                           cpx     $0200
+3370: f0 19                              beq     L338B
+3372: c8                                 iny
+3373: d0 ee                              bne     L3363
+3375: a5 02        L3375                 lda     $02
+3377: 18                                 clc
+3378: 69 23                              adc     #$23
+337a: 90 e2                              bcc     L335E
+337c: ac 88 39                           ldy     L3988
+337f: 88                                 dey
+3380: f0 05                              beq     L3387
+3382: 8c 88 39                           sty     L3988
+3385: d0 c9                              bne     L3350
+
+3387: a9 06        L3387                 lda     #$06
+3389: 38                                 sec
+338a: 60                                 rts
+
+338b: e0 1e        L338B                 cpx     #$1e
+338d: f0 0a                              beq     L3399
+338f: c8                                 iny
+3390: b1 73                              lda     ($73),y
+3392: c9 a0                              cmp     #$a0
+3394: d0 df                              bne     L3375
+3396: e8                                 inx
+3397: d0 f2                              bne     L338B
+3399: a4 02        L3399                 ldy     $02
+339b: 88                                 dey
+339c: 88                                 dey
+339d: 88                                 dey
+339e: b1 73                              lda     ($73),y
+33a0: 30 e5                              bmi     L3387
+33a2: 8d 87 39                           sta     L3987
+33a5: c8                                 iny
+33a6: b1 73                              lda     ($73),y
+33a8: 8d 88 39                           sta     L3988
+33ab: ae 86 39                           ldx     L3986
+33ae: e8                                 inx
+33af: e8                                 inx
+33b0: 8e 86 39                           stx     L3986
+33b3: 86 07                              stx     $07
+33b5: a2 00                              ldx     #$00
+33b7: 86 06                              stx     $06
+33b9: c8                                 iny
+33ba: b1 73                              lda     ($73),y
+33bc: 29 7f                              and     #$7f
+33be: c9 02                              cmp     #$02
+33c0: f0 0b                              beq     L33CD
+33c2: c9 04                              cmp     #$04
+33c4: d0 03                              bne     L33C9
+33c6: 4c 90 34                           jmp     L3490
+
+33c9: 38           L33C9                 sec
+33ca: a9 0d                              lda     #$0d
+33cc: 60                                 rts
+
+33cd: a9 83        L33CD                 lda     #$83
+33cf: a0 39                              ldy     #$39
+33d1: 20 18 39                           jsr     L3918
+33d4: 90 03                              bcc     L33D9
+33d6: 4c 7f 39                           jmp     L397F
+
+33d9: a5 67        L33D9                 lda     $67
+33db: a4 68                              ldy     $68
+33dd: 38                                 sec
+33de: e9 02                              sbc     #$02
+33e0: b0 01                              bcs     L33E3
+33e2: 88                                 dey
+33e3: 8d 85 39     L33E3                 sta     L3985
+33e6: 8c 86 39                           sty     L3986
+33e9: a0 00                              ldy     #$00
+33eb: 8c 8b 34                           sty     L348B
+33ee: c8                                 iny
+33ef: b1 06                              lda     ($06),y
+33f1: 8d 8f 34                           sta     L348F
+33f4: c8                                 iny
+33f5: b1 06                              lda     ($06),y
+33f7: 8d 8e 34                           sta     L348E
+33fa: a0 0c                              ldy     #$0c
+33fc: b1 06        L33FC                 lda     ($06),y
+33fe: f0 29                              beq     L3429
+3400: 8d 87 39                           sta     L3987
+3403: c8                                 iny
+3404: b1 06                              lda     ($06),y
+3406: c8                                 iny
+3407: 8d 88 39                           sta     L3988
+340a: 84 02                              sty     $02
+340c: a9 83                              lda     #$83
+340e: a0 39                              ldy     #$39
+3410: 20 18 39                           jsr     L3918
+3413: 90 03                              bcc     L3418
+3415: 4c 7f 39                           jmp     L397F
+
+3418: a4 02        L3418                 ldy     $02
+341a: f0 26                              beq     L3442
+341c: ee 86 39                           inc     L3986
+341f: ad 86 39                           lda     L3986
+3422: c5 74                              cmp     $74
+3424: 90 d6                              bcc     L33FC
+3426: a9 0e                              lda     #$0e
+3428: 60                                 rts
+
+3429: ad 85 39     L3429                 lda     L3985
+342c: 85 69                              sta     $69
+342e: 85 af                              sta     $af
+3430: ad 86 39                           lda     L3986
+3433: 85 6a                              sta     $6a
+3435: 85 b0                              sta     $b0
+3437: a0 00                              ldy     #$00
+3439: 98                                 tya
+343a: c6 67                              dec     $67
+343c: 91 67                              sta     ($67),y
+343e: e6 67                              inc     $67
+3440: 18                                 clc
+3441: 60                                 rts
+
+3442: ad 85 39     L3442                 lda     L3985
+3445: 8d 8c 34                           sta     L348C
+3448: ad 86 39                           lda     L3986
+344b: 8d 8d 34                           sta     L348D
+344e: a5 06                              lda     $06
+3450: 8d 85 39                           sta     L3985
+3453: a5 07                              lda     $07
+3455: 8d 86 39                           sta     L3986
+3458: ad 8f 34                           lda     L348F
+345b: 8d 87 39                           sta     L3987
+345e: ad 8e 34                           lda     L348E
+3461: 8d 88 39                           sta     L3988
+3464: a9 83                              lda     #$83
+3466: a0 39                              ldy     #$39
+3468: 20 18 39                           jsr     L3918
+346b: 90 03                              bcc     L3470
+346d: 4c 7f 39                           jmp     L397F
+
+3470: ad 8c 34     L3470                 lda     L348C
+3473: 8d 85 39                           sta     L3985
+3476: ad 8d 34                           lda     L348D
+3479: 8d 86 39                           sta     L3986
+347c: a0 0c                              ldy     #$0c
+347e: ad 8b 34                           lda     L348B
+3481: d0 03                              bne     L3486
+3483: 4c fc 33                           jmp     L33FC
+
+3486: 84 02        L3486                 sty     $02
+3488: 4c 0e 35                           jmp     L350E
+
+348b: 00           L348B                 .dd1    $00
+348c: 00           L348C                 .dd1    $00
+348d: 00           L348D                 .dd1    $00
+348e: 00           L348E                 .dd1    $00
+348f: 00           L348F                 .dd1    $00
+
+3490: a9 83        L3490                 lda     #$83
+3492: a0 39                              ldy     #$39
+3494: 20 18 39                           jsr     L3918
+3497: 90 03                              bcc     L349C
+3499: 4c 7f 39                           jmp     L397F
+
+349c: a0 01        L349C                 ldy     #$01
+349e: b1 06                              lda     ($06),y
+34a0: 8d 8f 34                           sta     L348F
+34a3: c8                                 iny
+34a4: b1 06                              lda     ($06),y
+34a6: 8d 8e 34                           sta     L348E
+34a9: a0 0c                              ldy     #$0c
+34ab: 8c 8b 34                           sty     L348B
+34ae: b1 06                              lda     ($06),y
+34b0: 8d 87 39                           sta     L3987
+34b3: c8                                 iny
+34b4: b1 06                              lda     ($06),y
+34b6: c8                                 iny
+34b7: 84 02                              sty     $02
+34b9: 8d 88 39                           sta     L3988
+34bc: a5 74                              lda     $74
+34be: 8d 86 39                           sta     L3986
+34c1: a0 00                              ldy     #$00
+34c3: 8c 85 39                           sty     L3985
+34c6: a9 83                              lda     #$83
+34c8: a0 39                              ldy     #$39
+34ca: 20 18 39                           jsr     L3918
+34cd: 90 03                              bcc     L34D2
+34cf: 4c 7f 39                           jmp     L397F
+
+34d2: ae 59 be     L34D2                 ldx     BI_VADDR+1
+34d5: ad 58 be                           lda     BI_VADDR
+34d8: ac 57 be                           ldy     BI_FBITS+1
+34db: 30 0c                              bmi     L34E9
+34dd: a0 01                              ldy     #$01
+34df: b1 73                              lda     ($73),y
+34e1: 85 04                              sta     $04
+34e3: 88                                 dey
+34e4: aa                                 tax
+34e5: b1 73                              lda     ($73),y
+34e7: 85 03                              sta     $03
+34e9: e4 74        L34E9                 cpx     $74
+34eb: 90 03                              bcc     L34F0
+34ed: a9 0e                              lda     #$0e
+34ef: 60                                 rts
+
+34f0: 38           L34F0                 sec
+34f1: e9 04                              sbc     #$04
+34f3: b0 01                              bcs     L34F6
+34f5: ca                                 dex
+34f6: 85 08        L34F6                 sta     $08
+34f8: 86 09                              stx     $09
+34fa: a0 00                              ldy     #$00
+34fc: b1 73        L34FC                 lda     ($73),y
+34fe: 91 08                              sta     ($08),y
+3500: c8                                 iny
+3501: d0 f9                              bne     L34FC
+3503: a5 08                              lda     $08
+3505: 8d 85 39                           sta     L3985
+3508: a4 09                              ldy     $09
+350a: c8                                 iny
+350b: 8c 86 39                           sty     L3986
+350e: a4 02        L350E                 ldy     $02
+3510: d0 03                              bne     L3515
+3512: 4c 42 34                           jmp     L3442
+
+3515: b1 06        L3515                 lda     ($06),y
+3517: f0 25                              beq     L353E
+3519: 8d 87 39                           sta     L3987
+351c: c8                                 iny
+351d: b1 06                              lda     ($06),y
+351f: 8d 88 39                           sta     L3988
+3522: c8                                 iny
+3523: 84 02                              sty     $02
+3525: a9 83                              lda     #$83
+3527: a0 39                              ldy     #$39
+3529: 20 18 39                           jsr     L3918
+352c: 90 03                              bcc     L3531
+352e: 4c 7f 39                           jmp     L397F
+
+3531: ee 86 39     L3531                 inc     L3986
+3534: ad 86 39                           lda     L3986
+3537: c5 74                              cmp     $74
+3539: 90 d3                              bcc     L350E
+353b: a9 0e                              lda     #$0e
+353d: 60                                 rts
+
+353e: 18           L353E                 clc
+353f: 60                                 rts
+
+3540: a2 00        L3540                 ldx     #$00
+3542: b9 00 02     L3542                 lda     $0200,y
+3545: c8                                 iny
+3546: c9 a0                              cmp     #$a0
+3548: f0 f8                              beq     L3542
+354a: c9 8d        L354A                 cmp     #$8d
+354c: f0 0e                              beq     L355C
+354e: c9 ac                              cmp     #$ac
+3550: f0 0a                              beq     L355C
+3552: 9d 01 02                           sta     $0201,x
+3555: e8                                 inx
+3556: b9 00 02                           lda     $0200,y
+3559: c8                                 iny
+355a: d0 ee                              bne     L354A
+355c: 8e 00 02     L355C                 stx     $0200
+355f: 88                                 dey
+3560: 8c 52 be                           sty     BI_XLEN
+3563: a9 7e                              lda     #$7e
+3565: 8d 50 be                           sta     BI_XTRNADDR
+3568: a9 35                              lda     #$35
+356a: 8d 51 be                           sta     BI_XTRNADDR+1
+356d: a9 00                              lda     #$00
+356f: 8d 53 be                           sta     BI_XCNUM
+3572: a9 10                              lda     #$10
+3574: 8d 54 be                           sta     BI_PBITS
+3577: a9 94                              lda     #$94
+3579: 8d 55 be                           sta     BI_PBITS+1
+357c: 18                                 clc
+357d: 60                                 rts
+
+357e: ae 00 02                           ldx     $0200
+3581: d0 04                              bne     L3587
+3583: a9 10                              lda     #$10
+3585: 38                                 sec
+3586: 60                                 rts
+
+3587: e0 1f        L3587                 cpx     #$1f
+3589: 90 05                              bcc     L3590
+358b: a9 1e                              lda     #$1e
+358d: 8d 00 02                           sta     $0200
+3590: ad 61 be     L3590                 lda     BI_VSLOT
+3593: 8d 3c be                           sta     BI_DEFSLT
+3596: 0a                                 asl     A
+3597: 0a                                 asl     A
+3598: 0a                                 asl     A
+3599: 0a                                 asl     A
+359a: ae 62 be                           ldx     BI_VDRIV
+359d: 8e 3d be                           stx     BI_DEFDRV
+35a0: ca                                 dex
+35a1: f0 02                              beq     L35A5
+35a3: 09 80                              ora     #$80
+35a5: 8d 84 39     L35A5                 sta     L3984
+35a8: a9 80                              lda     #$80
+35aa: 8d 83 39                           sta     L3983
+35ad: ad 57 be                           lda     BI_FBITS+1
+35b0: 10 0d                              bpl     L35BF
+35b2: ae 60 be                           ldx     BI_VLNTH+1
+35b5: ad 5f be                           lda     BI_VLNTH
+35b8: 18                                 clc
+35b9: 69 04                              adc     #$04
+35bb: 90 1c                              bcc     L35D9
+35bd: b0 19                              bcs     L35D8
+
+35bf: a5 b0        L35BF                 lda     $b0
+35c1: 38                                 sec
+35c2: e5 68                              sbc     $68
+35c4: aa                                 tax
+35c5: a5 af                              lda     $af
+35c7: 38                                 sec
+35c8: e5 67                              sbc     $67
+35ca: b0 01                              bcs     L35CD
+35cc: ca                                 dex
+35cd: 8e 60 be     L35CD                 stx     BI_VLNTH+1
+35d0: 8d 5f be                           sta     BI_VLNTH
+35d3: 18                                 clc
+35d4: 69 02                              adc     #$02
+35d6: 90 01                              bcc     L35D9
+35d8: e8           L35D8                 inx
+35d9: e8           L35D9                 inx
+35da: c9 00                              cmp     #$00
+35dc: f0 01                              beq     L35DF
+35de: e8                                 inx
+35df: 8e fb 37     L35DF                 stx     L37FB
+35e2: e0 7b                              cpx     #$7b
+35e4: 90 04                              bcc     L35EA
+35e6: a9 0e                              lda     #$0e
+35e8: 38                                 sec
+35e9: 60                                 rts
+
+35ea: a4 74        L35EA                 ldy     $74
+35ec: c8                                 iny
+35ed: c8                                 iny
+35ee: c8                                 iny
+35ef: 8c 86 39                           sty     L3986
+35f2: 84 07                              sty     $07
+35f4: a9 00                              lda     #$00
+35f6: 8d c2 36                           sta     L36C2
+35f9: 85 06                              sta     $06
+35fb: 8d 85 39                           sta     L3985
+35fe: 8d 88 39                           sta     L3988
+3601: a9 11                              lda     #$11
+3603: 8d 87 39                           sta     L3987
+3606: a0 39                              ldy     #$39
+3608: a9 83                              lda     #$83
+360a: 20 18 39                           jsr     L3918
+360d: 90 03                              bcc     L3612
+360f: 4c 7f 39                           jmp     L397F
+
+3612: a0 01        L3612                 ldy     #$01
+3614: b1 06                              lda     ($06),y
+3616: c9 11                              cmp     #$11
+3618: f0 03                              beq     L361D
+361a: 4c 7f 39     L361A                 jmp     L397F
+
+361d: c8           L361D                 iny
+361e: b1 06                              lda     ($06),y
+3620: c9 0f                              cmp     #$0f
+3622: d0 f6                              bne     L361A
+3624: 20 fc 37                           jsr     L37FC
+3627: 90 01                              bcc     L362A
+3629: 60                                 rts
+
+362a: e6 74        L362A                 inc     $74
+362c: e6 74                              inc     $74
+362e: ae fb 37                           ldx     L37FB
+3631: a0 00                              ldy     #$00
+3633: 98                                 tya
+3634: 91 73        L3634                 sta     ($73),y
+3636: c8                                 iny
+3637: d0 fb                              bne     L3634
+3639: a0 0c                              ldy     #$0c
+363b: 84 08                              sty     $08
+363d: a0 c1                              ldy     #$c1
+363f: b1 06        L363F                 lda     ($06),y
+3641: f0 72                              beq     L36B5
+3643: 98                                 tya
+3644: 29 01                              and     #$01
+3646: f0 07                              beq     L364F
+3648: a9 00                              lda     #$00
+364a: 8d c6 36                           sta     L36C6
+364d: f0 05                              beq     L3654
+
+364f: a9 08        L364F                 lda     #$08
+3651: 8d c6 36                           sta     L36C6
+3654: 98           L3654                 tya
+3655: 38                                 sec
+3656: e9 38                              sbc     #$38
+3658: 29 fe                              and     #$fe
+365a: 4a                                 lsr     A
+365b: 4a                                 lsr     A
+365c: 8d c4 36                           sta     L36C4
+365f: b1 06                              lda     ($06),y
+3661: 48                                 pha
+3662: 84 09                              sty     $09
+3664: a0 07                              ldy     #$07
+3666: 2a           L3666                 rol     A
+3667: b0 03                              bcs     L366C
+3669: 88                                 dey
+366a: 10 fa                              bpl     L3666
+366c: 98           L366C                 tya
+366d: 18                                 clc
+366e: 6d c6 36                           adc     L36C6
+3671: 8d c6 36                           sta     L36C6
+3674: a4 08                              ldy     $08
+3676: ad c2 36                           lda     L36C2
+3679: d0 0f                              bne     L368A
+367b: ad c4 36                           lda     L36C4
+367e: 8d c2 36                           sta     L36C2
+3681: ad c6 36                           lda     L36C6
+3684: 8d c3 36                           sta     L36C3
+3687: 68                                 pla
+3688: d0 0f                              bne     L3699
+368a: ad c4 36     L368A                 lda     L36C4
+368d: 91 73                              sta     ($73),y
+368f: c8                                 iny
+3690: ad c6 36                           lda     L36C6
+3693: 91 73                              sta     ($73),y
+3695: c8                                 iny
+3696: 84 08                              sty     $08
+3698: 68                                 pla
+3699: a0 08        L3699                 ldy     #$08
+369b: 2a           L369B                 rol     A
+369c: b0 03                              bcs     L36A1
+369e: 88                                 dey
+369f: d0 fa                              bne     L369B
+36a1: 18           L36A1                 clc
+36a2: 6a           L36A2                 ror     A
+36a3: c0 08                              cpy     #$08
+36a5: f0 03                              beq     L36AA
+36a7: c8                                 iny
+36a8: d0 f8                              bne     L36A2
+36aa: a4 09        L36AA                 ldy     $09
+36ac: 91 06                              sta     ($06),y
+36ae: ca                                 dex
+36af: f0 16                              beq     L36C7
+36b1: c9 00                              cmp     #$00
+36b3: d0 8a                              bne     L363F
+36b5: 88           L36B5                 dey
+36b6: c0 37        L36B6                 cpy     #$37
+36b8: d0 85                              bne     L363F
+36ba: c6 74                              dec     $74
+36bc: c6 74                              dec     $74
+36be: a9 09                              lda     #$09
+36c0: 38                                 sec
+36c1: 60                                 rts
+
+36c2: 00           L36C2                 .dd1    $00
+36c3: 00           L36C3                 .dd1    $00
+36c4: 00           L36C4                 .dd1    $00
+36c5: 00           L36C5                 .dd1    $00
+36c6: 00           L36C6                 .dd1    $00
+
+36c7: c6 74        L36C7                 dec     $74
+36c9: c6 74                              dec     $74
+36cb: a9 81                              lda     #$81
+36cd: 8d 83 39                           sta     L3983
+36d0: a9 11                              lda     #$11
+36d2: 8d 87 39                           sta     L3987
+36d5: a9 00                              lda     #$00
+36d7: 8d 88 39                           sta     L3988
+36da: a5 07                              lda     $07
+36dc: 8d 86 39                           sta     L3986
+36df: a9 83                              lda     #$83
+36e1: a0 39                              ldy     #$39
+36e3: 20 18 39                           jsr     L3918
+36e6: 90 03                              bcc     L36EB
+36e8: 4c 7f 39     L36E8                 jmp     L397F
+
+36eb: ad c2 36     L36EB                 lda     L36C2
+36ee: 8d 87 39                           sta     L3987
+36f1: ad c3 36                           lda     L36C3
+36f4: 8d 88 39                           sta     L3988
+36f7: ce 86 39                           dec     L3986
+36fa: a9 83                              lda     #$83
+36fc: a0 39                              ldy     #$39
+36fe: 20 18 39                           jsr     L3918
+3701: b0 e5                              bcs     L36E8
+3703: ce 83 39                           dec     L3983
+3706: a5 07                              lda     $07
+3708: 8d 86 39                           sta     L3986
+370b: a9 11                              lda     #$11
+370d: 8d 87 39                           sta     L3987
+3710: a9 0f                              lda     #$0f
+3712: 8d 88 39                           sta     L3988
+3715: a0 39        L3715                 ldy     #$39
+3717: a9 83                              lda     #$83
+3719: 20 18 39                           jsr     L3918
+371c: 90 03                              bcc     L3721
+371e: 4c 7f 39                           jmp     L397F
+
+3721: a9 0b        L3721                 lda     #$0b
+3723: a8           L3723                 tay
+3724: b1 06                              lda     ($06),y
+3726: f0 11                              beq     L3739
+3728: 30 0f                              bmi     L3739
+372a: 98                                 tya
+372b: 18                                 clc
+372c: 69 23                              adc     #$23
+372e: 90 f3                              bcc     L3723
+3730: ce 88 39                           dec     L3988
+3733: d0 e0                              bne     L3715
+3735: a9 11                              lda     #$11
+3737: 38                                 sec
+3738: 60                                 rts
+
+3739: ad c2 36     L3739                 lda     L36C2
+373c: 91 06                              sta     ($06),y
+373e: c8                                 iny
+373f: ad c3 36                           lda     L36C3
+3742: 91 06                              sta     ($06),y
+3744: c8                                 iny
+3745: ae 57 be                           ldx     BI_FBITS+1
+3748: 10 04                              bpl     L374E
+374a: a9 04                              lda     #$04
+374c: d0 02                              bne     L3750
+
+374e: a9 02        L374E                 lda     #$02
+3750: 91 06        L3750                 sta     ($06),y
+3752: c8                                 iny
+3753: a2 00                              ldx     #$00
+3755: bd 01 02     L3755                 lda     $0201,x
+3758: 91 06                              sta     ($06),y
+375a: c8                                 iny
+375b: e8                                 inx
+375c: ec 00 02                           cpx     $0200
+375f: d0 f4                              bne     L3755
+3761: e0 1e        L3761                 cpx     #$1e
+3763: f0 08                              beq     L376D
+3765: a9 a0                              lda     #$a0
+3767: 91 06                              sta     ($06),y
+3769: e8                                 inx
+376a: c8                                 iny
+376b: d0 f4                              bne     L3761
+376d: ad fb 37     L376D                 lda     L37FB
+3770: 91 06                              sta     ($06),y
+3772: c8                                 iny
+3773: a9 00                              lda     #$00
+3775: 91 06                              sta     ($06),y
+3777: a9 81                              lda     #$81
+3779: 8d 83 39                           sta     L3983
+377c: a9 83                              lda     #$83
+377e: a0 39                              ldy     #$39
+3780: 20 18 39                           jsr     L3918
+3783: 90 03                              bcc     L3788
+3785: 4c 7f 39                           jmp     L397F
+
+3788: c6 07        L3788                 dec     $07
+378a: ae 57 be                           ldx     BI_FBITS+1
+378d: 10 20                              bpl     L37AF
+378f: ae 59 be                           ldx     BI_VADDR+1
+3792: ad 58 be                           lda     BI_VADDR
+3795: 38                                 sec
+3796: e9 04                              sbc     #$04
+3798: b0 01                              bcs     L379B
+379a: ca                                 dex
+379b: 85 08        L379B                 sta     $08
+379d: 86 09                              stx     $09
+379f: a0 00                              ldy     #$00
+37a1: ad 58 be                           lda     BI_VADDR
+37a4: 91 08                              sta     ($08),y
+37a6: c8                                 iny
+37a7: ad 59 be                           lda     BI_VADDR+1
+37aa: 91 08                              sta     ($08),y
+37ac: c8                                 iny
+37ad: d0 0a                              bne     L37B9
+37af: a9 ff        L37AF                 lda     #$ff
+37b1: 85 08                              sta     $08
+37b3: a9 07                              lda     #$07
+37b5: 85 09                              sta     $09
+37b7: a0 00                              ldy     #$00
+37b9: ad 5f be     L37B9                 lda     BI_VLNTH
+37bc: 91 08                              sta     ($08),y
+37be: c8                                 iny
+37bf: ad 60 be                           lda     BI_VLNTH+1
+37c2: 91 08                              sta     ($08),y
+37c4: a0 0c                              ldy     #$0c
+37c6: a5 08        L37C6                 lda     $08
+37c8: 8d 85 39                           sta     L3985
+37cb: a5 09                              lda     $09
+37cd: 8d 86 39                           sta     L3986
+37d0: b1 06                              lda     ($06),y
+37d2: f0 20                              beq     L37F4
+37d4: c8                                 iny
+37d5: 8d 87 39                           sta     L3987
+37d8: b1 06                              lda     ($06),y
+37da: 8d 88 39                           sta     L3988
+37dd: c8                                 iny
+37de: 8c fb 37                           sty     L37FB
+37e1: a9 83                              lda     #$83
+37e3: a0 39                              ldy     #$39
+37e5: 20 18 39                           jsr     L3918
+37e8: 90 03                              bcc     L37ED
+37ea: 4c 7f 39                           jmp     L397F
+
+37ed: e6 09        L37ED                 inc     $09
+37ef: ac fb 37                           ldy     L37FB
+37f2: d0 d2                              bne     L37C6
+37f4: a9 00        L37F4                 lda     #$00
+37f6: 8d 00 08                           sta     $0800
+37f9: 18                                 clc
+37fa: 60                                 rts
+
+37fb: 00           L37FB                 .dd1    $00
+
+37fc: a4 74        L37FC                 ldy     $74
+37fe: c8                                 iny
+37ff: c8                                 iny
+3800: 8c 86 39                           sty     L3986
+3803: 84 1a                              sty     $1a
+3805: a9 00                              lda     #$00
+3807: 8d 85 39                           sta     L3985
+380a: 85 19                              sta     $19
+380c: a9 11                              lda     #$11
+380e: 8d 87 39                           sta     L3987
+3811: a9 0f                              lda     #$0f
+3813: 8d 88 39                           sta     L3988
+3816: a9 83        L3816                 lda     #$83
+3818: a0 39                              ldy     #$39
+381a: 20 18 39                           jsr     L3918
+381d: 90 03                              bcc     L3822
+381f: 4c 7f 39                           jmp     L397F
+
+3822: a0 01        L3822                 ldy     #$01
+3824: b1 19                              lda     ($19),y
+3826: c9 11                              cmp     #$11
+3828: f0 03                              beq     L382D
+382a: 4c 7f 39                           jmp     L397F
+
+382d: a9 0e        L382D                 lda     #$0e
+382f: 48           L382F                 pha
+3830: a8                                 tay
+3831: a2 00                              ldx     #$00
+3833: b1 19        L3833                 lda     ($19),y
+3835: d0 03                              bne     L383A
+3837: 68                                 pla
+3838: 18                                 clc
+3839: 60                                 rts
+
+383a: dd 01 02     L383A                 cmp     $0201,x
+383d: d0 13                              bne     L3852
+383f: e8                                 inx
+3840: c8                                 iny
+3841: ec 00 02                           cpx     $0200
+3844: d0 ed                              bne     L3833
+3846: e0 1e        L3846                 cpx     #$1e
+3848: f0 15                              beq     L385F
+384a: b1 19                              lda     ($19),y
+384c: e8                                 inx
+384d: c8                                 iny
+384e: c9 a0                              cmp     #$a0
+3850: f0 f4                              beq     L3846
+3852: 68           L3852                 pla
+3853: 18                                 clc
+3854: 69 23                              adc     #$23
+3856: 90 d7                              bcc     L382F
+3858: ce 88 39                           dec     L3988
+385b: d0 b9                              bne     L3816
+385d: 18                                 clc
+385e: 60                                 rts
+
+385f: 68           L385F                 pla
+3860: a8                                 tay
+3861: 88                                 dey
+3862: b1 19                              lda     ($19),y
+3864: 30 11                              bmi     L3877
+3866: c9 04                              cmp     #$04
+3868: f0 18                              beq     L3882
+386a: c9 02                              cmp     #$02
+386c: d0 05                              bne     L3873
+386e: ad 57 be                           lda     BI_FBITS+1
+3871: 10 14                              bpl     L3887
+3873: a9 0d        L3873                 lda     #$0d
+3875: 38                                 sec
+3876: 60                                 rts
+
+3877: a9 0a        L3877                 lda     #$0a
+3879: 38                                 sec
+387a: 60                                 rts
+
+387b: c8           L387B                 iny
+387c: c8                                 iny
+387d: c8                                 iny
+387e: 98                                 tya
+387f: 48                                 pha
+3880: d0 d0                              bne     L3852
+3882: ad 57 be     L3882                 lda     BI_FBITS+1
+3885: 10 ec                              bpl     L3873
+3887: 88           L3887                 dey
+3888: 88                                 dey
+3889: 98                                 tya
+388a: 48                                 pha
+388b: 18                                 clc
+388c: 69 21                              adc     #$21
+388e: a8                                 tay
+388f: b1 19                              lda     ($19),y
+3891: c9 7b                              cmp     #$7b
+3893: 90 05                              bcc     L389A
+3895: 68                                 pla
+3896: a9 0e                              lda     #$0e
+3898: 38                                 sec
+3899: 60                                 rts
+
+389a: 68           L389A                 pla
+389b: a8                                 tay
+389c: b1 19                              lda     ($19),y
+389e: 30 db                              bmi     L387B
+38a0: 8d c4 36                           sta     L36C4
+38a3: a9 ff                              lda     #$ff
+38a5: 91 19                              sta     ($19),y
+38a7: c8                                 iny
+38a8: b1 19                              lda     ($19),y
+38aa: 8d c5 36                           sta     L36C5
+38ad: a9 81                              lda     #$81
+38af: 8d 83 39                           sta     L3983
+38b2: a9 83                              lda     #$83
+38b4: a0 39                              ldy     #$39
+38b6: 20 18 39                           jsr     L3918
+38b9: 90 03                              bcc     L38BE
+38bb: 4c 7f 39                           jmp     L397F
+
+38be: ce 83 39     L38BE                 dec     L3983
+38c1: ad c4 36                           lda     L36C4
+38c4: 8d 87 39                           sta     L3987
+38c7: ad c5 36                           lda     L36C5
+38ca: 8d 88 39                           sta     L3988
+38cd: a9 83                              lda     #$83
+38cf: a0 39                              ldy     #$39
+38d1: 20 18 39                           jsr     L3918
+38d4: 90 03                              bcc     L38D9
+38d6: 4c 7f 39                           jmp     L397F
+
+38d9: 20 f7 38     L38D9                 jsr     L38F7
+38dc: a0 0c                              ldy     #$0c
+38de: b1 19        L38DE                 lda     ($19),y
+38e0: f0 13                              beq     L38F5
+38e2: 8d c4 36                           sta     L36C4
+38e5: c8                                 iny
+38e6: b1 19                              lda     ($19),y
+38e8: 8d c5 36                           sta     L36C5
+38eb: c8                                 iny
+38ec: 84 08                              sty     $08
+38ee: 20 f7 38     L38EE                 jsr     L38F7
+38f1: a4 08                              ldy     $08
+38f3: d0 e9                              bne     L38DE
+38f5: 18           L38F5                 clc
+38f6: 60                                 rts
+
+38f7: ad c4 36     L38F7                 lda     L36C4
+38fa: 0a                                 asl     A
+38fb: 0a                                 asl     A
+38fc: 18                                 clc
+38fd: 69 38                              adc     #$38
+38ff: a8                                 tay
+3900: ad c5 36                           lda     L36C5
+3903: c9 08                              cmp     #$08
+3905: b0 01                              bcs     L3908
+3907: c8                                 iny
+3908: 29 07        L3908                 and     #$07
+390a: aa                                 tax
+390b: a9 01                              lda     #$01
+390d: ca           L390D                 dex
+390e: 30 03                              bmi     L3913
+3910: 0a                                 asl     A
+3911: d0 fa                              bne     L390D
+3913: 11 06        L3913                 ora     ($06),y
+3915: 91 06                              sta     ($06),y
+3917: 60                                 rts
+
+3918: 85 00        L3918                 sta     $00
+391a: 84 01                              sty     $01
+391c: a0 01                              ldy     #$01
+391e: b1 00                              lda     ($00),y
+3920: 8d 8a 39                           sta     L398A
+3923: c8                                 iny
+3924: b1 00                              lda     ($00),y
+3926: 8d 90 39                           sta     L3990
+3929: c8                                 iny
+392a: b1 00                              lda     ($00),y
+392c: 8d 91 39                           sta     L3991
+392f: c8                                 iny
+3930: b1 00                              lda     ($00),y
+3932: 48                                 pha
+3933: c8                                 iny
+3934: b1 00                              lda     ($00),y
+3936: a8                                 tay
+3937: 68                                 pla
+3938: 20 b8 39                           jsr     L39B8
+393b: 8d 8d 39                           sta     L398D
+393e: 8c 8e 39                           sty     L398D+1
+3941: 8e 8f 39                           stx     L398F
+3944: a5 74                              lda     $74
+3946: 8d 8c 39                           sta     L398B+1
+3949: 20 00 bf                           jsr     P8_MLI
+394c: 80                                 .dd1    P8_READ_BLOCK
+394d: 89 39                              .dd2    L3989
+394f: b0 2e                              bcs     L397F
+3951: a0 00                              ldy     #$00
+3953: b1 00                              lda     ($00),y
+3955: c9 81                              cmp     #$81
+3957: f0 3b                              beq     L3994
+3959: a5 74                              lda     $74
+395b: 18                                 clc
+395c: 6d 8f 39                           adc     L398F
+395f: 8d 77 39                           sta     L3975+2
+3962: a9 00                              lda     #$00
+3964: 8d 76 39                           sta     L3975+1
+3967: ad 90 39                           lda     L3990
+396a: 8d 79 39                           sta     L3978+1
+396d: ad 91 39                           lda     L3991
+3970: 8d 7a 39                           sta     L3978+2
+3973: a0 00        L3973                 ldy     #$00
+3975: b9 00 96     L3975                 lda     $9600,y
+3978: 99 00 20     L3978                 sta     $2000,y
+397b: c8                                 iny
+397c: d0 f7                              bne     L3975
+397e: 60                                 rts
+
+397f: 38           L397F                 sec
+3980: a9 08                              lda     #$08
+3982: 60                                 rts
+
+3983: 80           L3983                 .dd1    $80
+3984: 60           L3984                 .dd1    $60
+3985: 00           L3985                 .dd1    $00
+3986: 00           L3986                 .dd1    $00
+3987: 00           L3987                 .dd1    $00
+3988: 00           L3988                 .dd1    $00
+3989: 03           L3989                 .dd1    3
+398a: 00           L398A                 .dd1    $00
+398b: 00 00        L398B                 .dd2    $0000
+398d: 00 00        L398D                 .dd2    $0000
+398f: 00           L398F                 .dd1    $00
+3990: 00           L3990                 .dd1    $00
+3991: 00           L3991                 .dd1    $00
+3992: 00           L3992                 .dd1    $00
+3993: 00           L3993                 .dd1    $00
+
+3994: a5 74        L3994                 lda     $74
+3996: 18                                 clc
+3997: 6d 8f 39                           adc     L398F
+399a: 8d 7a 39                           sta     L3978+2
+399d: a9 00                              lda     #$00
+399f: 8d 79 39                           sta     L3978+1
+39a2: ad 90 39                           lda     L3990
+39a5: 8d 76 39                           sta     L3975+1
+39a8: ad 91 39                           lda     L3991
+39ab: 8d 77 39                           sta     L3975+2
+39ae: 20 73 39                           jsr     L3973
+39b1: 20 00 bf                           jsr     P8_MLI
+39b4: 81                                 .dd1    P8_WRITE_BLOCK
+39b5: 89 39                              .dd2    L3989
+39b7: 60                                 rts
+
+39b8: 8c 93 39     L39B8                 sty     L3993
+39bb: aa                                 tax
+39bc: a0 00                              ldy     #$00
+39be: 98                                 tya
+39bf: ca           L39BF                 dex
+39c0: 30 08                              bmi     L39CA
+39c2: 18                                 clc
+39c3: 69 08                              adc     #$08
+39c5: 90 f8                              bcc     L39BF
+39c7: c8                                 iny
+39c8: d0 f5                              bne     L39BF
+39ca: 8d 92 39     L39CA                 sta     L3992
+39cd: a2 00                              ldx     #$00
+39cf: ad 93 39                           lda     L3993
+39d2: d0 04                              bne     L39D8
+39d4: ad 92 39                           lda     L3992
+39d7: 60                                 rts
+
+39d8: c9 01        L39D8                 cmp     #$01
+39da: d0 0a                              bne     L39E6
+39dc: ad 92 39                           lda     L3992
+39df: 18                                 clc
+39e0: 69 07                              adc     #$07
+39e2: 90 01                              bcc     L39E5
+39e4: c8                                 iny
+39e5: 60           L39E5                 rts
+
+39e6: c9 0e        L39E6                 cmp     #$0e
+39e8: d0 05                              bne     L39EF
+39ea: ad 92 39                           lda     L3992
+39ed: e8                                 inx
+39ee: 60                                 rts
+
+39ef: c9 0f        L39EF                 cmp     #$0f
+39f1: d0 0b                              bne     L39FE
+39f3: ad 92 39                           lda     L3992
+39f6: 18                                 clc
+39f7: 69 07                              adc     #$07
+39f9: 90 01                              bcc     L39FC
+39fb: c8                                 iny
+39fc: e8           L39FC                 inx
+39fd: 60                                 rts
+
+39fe: ad 93 39     L39FE                 lda     L3993
+3a01: 4a                                 lsr     A
+3a02: b0 05                              bcs     L3A09
+3a04: a9 0e                              lda     #$0e
+3a06: e8                                 inx
+3a07: d0 02                              bne     L3A0B
+3a09: a9 0f        L3A09                 lda     #$0f
+3a0b: 38           L3A0B                 sec
+3a0c: ed 93 39                           sbc     L3993
+3a0f: 4a                                 lsr     A
+3a10: 18                                 clc
+3a11: 6d 92 39                           adc     L3992
+3a14: 90 01                              bcc     L3A17
+3a16: c8                                 iny
+3a17: 60           L3A17                 rts
+
+3a18: c6                                 .dd1    $c6
