@@ -1,0 +1,2 @@
+rwtsptr @ $00 2  ; (temp) pointer to virtual rwts block, also other temp
+temp06 @ $06 2

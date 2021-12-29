@@ -22,7 +22,9 @@
 "RT:Apple/Cxxx-IO.sym65",
 "RT:Apple/C08x-DiskII.sym65",
 "RT:Apple/ProDOS8.sym65",
-"PROJ:BI.sym65"],
+"PROJ:BI.sym65",
+"RT:Apple/Applesoft.sym65",
+"PROJ:DBLDOS.sym65"],
 "ExtensionScriptFileIdentifiers":["RT:Apple/ProDOS8.cs",
 "RT:Apple/VisHiRes.cs"],
 "ProjectSyms":{
@@ -73,15 +75,64 @@
 "115":"to call at end of our handler",
 "124":"end copy at $3AFF",
 "133":"0",
+"140":"where we relocated handler_entry (page $31) to",
 "277":"4 chars",
 "307":"5 chars",
 "322":"ignore spaces",
 "342":"Chain to next command handler",
-"383":"Return to BASIC to parse command line"},
+"355":"#$04 = BI_SD (slot/drive)",
+"359":"cmd len-1",
+"372":"0 = external command",
+"377":"At least one bit must be set in PBITS",
+"379":"so BI_FNOPT ($10) is typical and harmless",
+"383":"Return to BASIC to parse command line",
+"384":"update BASIC\u0027s default SLOT from params",
+"390":"A=slot*16 (unit number)",
+"394":"update default DRIVE from params",
+"403":"if drive 2, set high bit of unit number",
+"405":"as per ProDOS requirements",
+"408":"read",
+"413":"DOS VTOC",
+"450":"note we use $73 instead of $00",
+"452":"temp -- save vol #",
+"470":"restore temp -- why not move the vol # lookup here?",
+"535":"locked",
+"560":"text",
+"564":"int basic",
+"568":"applesoft",
+"572":"binary",
+"679":"yet another temp stored outside zp",
+"715":"go to next place",
+"720":"unused",
+"721":"ones",
+"722":"tens",
+"723":"hundreds place",
+"1795":"was write ($81), now read ($80)",
+"2328":"always #$83",
+"2330":"always #$39",
+"2332":"unit",
+"2340":"memsize",
+"2346":"memsize+1",
+"2352":"track (A)",
+"2356":"sector (Y)",
+"2363":"block number lo",
+"2366":"block number hi",
+"2374":"block buffer msb",
+"2389":"MLI write_block?",
+"2421":"updated in code",
+"2424":"updated in code",
+"2436":"(slot 6 on startup)",
+"2442":"unit number",
+"2443":"block buffer",
+"2445":"block number",
+"2451":"just a temp copy of \u0027sector\u0027",
+"2495":"multiply X*8 -\u003e Y,A",
+"2504":"always",
+"2511":"was this sector 0?"},
 
 "LongComments":{
 "-2147483647":{
-"Text":"DBLDOS -- a program by Jason Coleman (1986) which adds 3 commands, DCAT/DLOAD/DSAVE, to BASIC.SYSTEM.\r\n\r\nDCAT is experimentally confirmed to CATALOG DOS 3.3 disks, and DLOAD to load BASIC and binary programs from a DOS 3.3 disk.\r\n\r\nSee Beneath Apple ProDOS, A-30 (TYPE Command), for an example program that adds commands to the Basic Interpreter. Also see A.3.2, ProDOS 8 Technical Reference Manual.\r\n",
+"Text":"DBLDOS -- a program by Jason Coleman (1986) which adds 3 commands, DCAT/DLOAD/DSAVE, to BASIC.SYSTEM. Originally published in machine language format in COMPUTE! Magazine, Oct 1987, page 90.\r\n\r\nDCAT is experimentally confirmed to CATALOG DOS 3.3 disks, and DLOAD to load BASIC and binary programs from a DOS 3.3 disk.\r\n\r\nSee Beneath Apple ProDOS, A-30 (TYPE Command), for an example program that adds commands to the Basic Interpreter. Also see A.3.2, ProDOS 8 Technical Reference Manual.\r\n",
 "BoxMode":false,
 "MaxWidth":80,
 "BackgroundColor":0},
@@ -102,10 +153,44 @@
 "Text":"Once the DCAT command line has been parsed successfully by BASIC, we resume here.",
 "BoxMode":false,
 "MaxWidth":80,
+"BackgroundColor":0},
+
+"355":{
+"Text":"Inform BI of DCAT parsing params, and parse it.\r\n  DCAT [Sn,Dn]\r\n\r\nFilename may be provided, but will be ignored (quirk of BASIC.SYSTEM). (Note: syntax error results if filename is provided along with slot/drive; unknown why.)",
+"BoxMode":false,
+"MaxWidth":80,
+"BackgroundColor":0},
+
+"2441":{
+"Text":"Params for MLI READ_BLOCK and WRITE_BLOCK.",
+"BoxMode":false,
+"MaxWidth":80,
+"BackgroundColor":0},
+
+"2488":{
+"Text":"On entry, track in A, sector in Y. Returns block hi,lo in Y,A and unknown value in X.\r\n\r\nsector_tmp is a copy of \u0027sector\u0027. There is some (unnecessary?) indirection where the track,sector is passed in registers instead of using the table they are already stored in, meaning a temp has to be used to save this register. And these registers are loaded via an indirect pointer to the table. But there is only one table, so all the indirection and copies are for no purpose.\r\n\r\nTS to block algorithm can be found in B.5 - DOS 3.3 Disk Organization.",
+"BoxMode":false,
+"MaxWidth":80,
+"BackgroundColor":0},
+
+"2328":{
+"Text":"Input Y,A is a pointer to a table containing command, unit, memsize, track and sector. Copy these into memory locations or registers to operate on, then read or write a track and sector.\r\n\r\nNote that the table pointer is constant -- there\u0027s only one in this program -- so the indirection and copying is superfluous.",
+"BoxMode":false,
+"MaxWidth":80,
+"BackgroundColor":0},
+
+"2435":{
+"Text":"Params for virtual RWTS command. This will be translated into a ProDOS MLI READ_BLOCK or WRITE_BLOCK. The internal RWTS call takes a pointer to this table, although there is only one table.",
+"BoxMode":false,
+"MaxWidth":80,
 "BackgroundColor":0}},
 
 "Notes":{
-},
+"498":{
+"Text":"zp $00 is used as a temp pointer into our buffer. Also note it is made the same as $73 (which we used directly above, oddly).\r\n",
+"BoxMode":false,
+"MaxWidth":80,
+"BackgroundColor":0}},
 
 "UserLabels":{
 "12":{
@@ -267,6 +352,202 @@
 "Value":12956,
 "Source":"User",
 "Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"405":{
+"Label":"d1",
+"Value":12693,
+"Source":"User",
+"Type":"NonUniqueLocalAddr",
+"LabelAnno":"None"},
+
+"2441":{
+"Label":"block_params",
+"Value":14729,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"2439":{
+"Label":"track",
+"Value":14727,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"2440":{
+"Label":"sector",
+"Value":14728,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"2431":{
+"Label":"error",
+"Value":14719,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"2436":{
+"Label":"unit",
+"Value":14724,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"2437":{
+"Label":"memsize",
+"Value":14725,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"2488":{
+"Label":"ts_to_block",
+"Value":14776,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"Uncertain"},
+
+"2451":{
+"Label":"sector_tmp",
+"Value":14739,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"2495":{
+"Label":"add8",
+"Value":14783,
+"Source":"User",
+"Type":"NonUniqueLocalAddr",
+"LabelAnno":"None"},
+
+"2450":{
+"Label":"blocklo",
+"Value":14738,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"2435":{
+"Label":"rwtscmd",
+"Value":14723,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"2328":{
+"Label":"rwts",
+"Value":14616,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"2448":{
+"Label":"memsize_tmp",
+"Value":14736,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"Uncertain"},
+
+"2421":{
+"Label":"src",
+"Value":14709,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"2424":{
+"Label":"dst",
+"Value":14712,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"2452":{
+"Label":"write",
+"Value":14740,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"2419":{
+"Label":"copy_sect_buf",
+"Value":14707,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"574":{
+"Label":"cout",
+"Value":12862,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"445":{
+"Label":"catalog",
+"Value":12733,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"456":{
+"Label":"print_volume",
+"Value":12744,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"719":{
+"Label":"num_tmp",
+"Value":13007,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"721":{
+"Label":"places",
+"Value":13009,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"679":{
+"Label":"print_3_digits",
+"Value":12967,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"709":{
+"Label":"print_place",
+"Value":12997,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"687":{
+"Label":"loop",
+"Value":12975,
+"Source":"User",
+"Type":"NonUniqueLocalAddr",
+"LabelAnno":"None"},
+
+"684":{
+"Label":"start",
+"Value":12972,
+"Source":"User",
+"Type":"NonUniqueLocalAddr",
+"LabelAnno":"None"},
+
+"498":{
+"Label":"file_entry",
+"Value":12786,
+"Source":"User",
+"Type":"GlobalAddr",
 "LabelAnno":"None"}},
 
 "OperandFormats":{
@@ -298,6 +579,12 @@
 "Label":"chain_to_original",
 "Part":"Low"}},
 
+"342":{
+"Length":3,
+"Format":"NumericLE",
+"SubFormat":"Hex",
+"SymbolRef":null},
+
 "362":{
 "Length":2,
 "Format":"NumericLE",
@@ -312,7 +599,149 @@
 "SubFormat":"Symbol",
 "SymbolRef":{
 "Label":"dcat_xtrn",
-"Part":"Low"}}},
+"Part":"Low"}},
+
+"433":{
+"Length":2,
+"Format":"NumericLE",
+"SubFormat":"Symbol",
+"SymbolRef":{
+"Label":"rwtscmd",
+"Part":"High"}},
+
+"435":{
+"Length":2,
+"Format":"NumericLE",
+"SubFormat":"Symbol",
+"SymbolRef":{
+"Label":"rwtscmd",
+"Part":"Low"}},
+
+"486":{
+"Length":2,
+"Format":"NumericLE",
+"SubFormat":"Symbol",
+"SymbolRef":{
+"Label":"rwtscmd",
+"Part":"High"}},
+
+"488":{
+"Length":2,
+"Format":"NumericLE",
+"SubFormat":"Symbol",
+"SymbolRef":{
+"Label":"rwtscmd",
+"Part":"Low"}},
+
+"527":{
+"Length":2,
+"Format":"NumericLE",
+"SubFormat":"HighAscii",
+"SymbolRef":null},
+
+"535":{
+"Length":2,
+"Format":"NumericLE",
+"SubFormat":"HighAscii",
+"SymbolRef":null},
+
+"560":{
+"Length":2,
+"Format":"NumericLE",
+"SubFormat":"HighAscii",
+"SymbolRef":null},
+
+"564":{
+"Length":2,
+"Format":"NumericLE",
+"SubFormat":"HighAscii",
+"SymbolRef":null},
+
+"568":{
+"Length":2,
+"Format":"NumericLE",
+"SubFormat":"HighAscii",
+"SymbolRef":null},
+
+"572":{
+"Length":2,
+"Format":"NumericLE",
+"SubFormat":"HighAscii",
+"SymbolRef":null},
+
+"577":{
+"Length":2,
+"Format":"NumericLE",
+"SubFormat":"HighAscii",
+"SymbolRef":null},
+
+"721":{
+"Length":1,
+"Format":"NumericLE",
+"SubFormat":"Decimal",
+"SymbolRef":null},
+
+"722":{
+"Length":1,
+"Format":"NumericLE",
+"SubFormat":"Decimal",
+"SymbolRef":null},
+
+"723":{
+"Length":1,
+"Format":"NumericLE",
+"SubFormat":"Decimal",
+"SymbolRef":null},
+
+"1813":{
+"Length":2,
+"Format":"NumericLE",
+"SubFormat":"Symbol",
+"SymbolRef":{
+"Label":"rwtscmd",
+"Part":"High"}},
+
+"1815":{
+"Length":2,
+"Format":"NumericLE",
+"SubFormat":"Symbol",
+"SymbolRef":{
+"Label":"rwtscmd",
+"Part":"Low"}},
+
+"2363":{
+"Length":3,
+"Format":"NumericLE",
+"SubFormat":"Symbol",
+"SymbolRef":{
+"Label":"block_params",
+"Part":"Low"}},
+
+"2366":{
+"Length":3,
+"Format":"NumericLE",
+"SubFormat":"Symbol",
+"SymbolRef":{
+"Label":"block_params",
+"Part":"Low"}},
+
+"2437":{
+"Length":2,
+"Format":"NumericLE",
+"SubFormat":"Hex",
+"SymbolRef":null},
+
+"2443":{
+"Length":2,
+"Format":"NumericLE",
+"SubFormat":"Hex",
+"SymbolRef":null},
+
+"2448":{
+"Length":2,
+"Format":"NumericLE",
+"SubFormat":"Hex",
+"SymbolRef":null}},
 
 "LvTables":{
 },
