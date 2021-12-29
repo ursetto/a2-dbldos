@@ -2,7 +2,7 @@
 
 DBLDOS is a program written by Jason Coleman in July 1986 which adds 3 commands, DCAT/DLOAD/DSAVE, to
 BASIC.SYSTEM in ProDOS. I found this on an old disk of mine, and originally couldn't find the source,
-so I set out to disassemble it. I did find the [source](#Original source) later, but it came as
+so I set out to disassemble it. I did find the [source](#original-source) later, but it came as
 raw machine language code to type in, not assembler source.
 
 DCAT is experimentally confirmed to CATALOG DOS 3.3 disks, and DLOAD to load BASIC and
