@@ -125,10 +125,31 @@
 "2442":"unit number",
 "2443":"block buffer",
 "2445":"block number",
-"2451":"just a temp copy of \u0027sector\u0027",
-"2495":"multiply X*8 -\u003e Y,A",
+"2451":"temp copy of \u0027sector\u0027 used by ts_to_block",
+"2488":"save sector",
+"2491":"track in X",
+"2495":"multiply track X*8 -\u003e block Y,A",
 "2504":"always",
-"2511":"was this sector 0?"},
+"2506":"save A",
+"2509":"equiv. to inx, since X=$FF",
+"2511":"was this sector 0?",
+"2516":"restore A",
+"2520":"sector 1?",
+"2528":"increase block num by 7",
+"2534":"sector E?",
+"2541":"just increase X by 1",
+"2543":"sector F?",
+"2551":"increase block num by 7",
+"2556":"and increase X by 1",
+"2558":"redundant, sector_tmp already in A",
+"2561":"test even/odd",
+"2564":"even sector, subtract $0E",
+"2566":"bump X when even",
+"2567":"always",
+"2569":"odd sector, subtract $0E+1",
+"2577":"add A/2 to block num",
+"2582":"(bump blockhi if wrapped)",
+"2584":"maybe type-in artifact"},
 
 "LongComments":{
 "-2147483647":{
@@ -168,7 +189,7 @@
 "BackgroundColor":0},
 
 "2488":{
-"Text":"On entry, track in A, sector in Y. Returns block hi,lo in Y,A and unknown value in X.\r\n\r\nsector_tmp is a copy of \u0027sector\u0027. There is some (unnecessary?) indirection where the track,sector is passed in registers instead of using the table they are already stored in, meaning a temp has to be used to save this register. And these registers are loaded via an indirect pointer to the table. But there is only one table, so all the indirection and copies are for no purpose.\r\n\r\nTS to block algorithm can be found in B.5 - DOS 3.3 Disk Organization.",
+"Text":"On entry, track in A, sector in Y. Returns ProDOS block hi,lo in Y,A. Returns which half of block in X (0 first, 1 second) as one 512-byte block corresponds to two 256-byte sectors.\r\n\r\nsector_tmp is a copy of \u0027sector\u0027. There is some (unnecessary?) indirection where the track,sector is passed in registers instead of using the table they are already stored in, meaning a temp has to be used to save this register. And these registers are loaded via an indirect pointer to the table. But there is only one table, so all the indirection and copies are for no purpose.\r\n\r\nTS to block algorithm can be found in B.5 - DOS 3.3 Disk Organization.\r\n\r\n      Block = (8 * Track) + Sector Offset\r\n\r\n        Sector : 0 1 2 3 4 5 6 7 8 9 A B C D E F\r\n Sector Offset : 0 7 6 6 5 5 4 4 3 3 2 2 1 1 0 7\r\n  Half of Block: 1 1 2 1 2 1 2 1 2 1 2 1 2 1 2 2\r\n\r\nThis section is 95 bytes long. I think it could be made shorter and faster with a 16-byte table lookup of sector offsets, with the block half flag in bit 0 or bit 7 of each offset.",
 "BoxMode":false,
 "MaxWidth":80,
 "BackgroundColor":0},
@@ -190,7 +211,13 @@
 "Text":"zp $00 is used as a temp pointer into our buffer. Also note it is made the same as $73 (which we used directly above, oddly).\r\n",
 "BoxMode":false,
 "MaxWidth":80,
-"BackgroundColor":0}},
+"BackgroundColor":0},
+
+"2575":{
+"Text":"Check what happens if subtracting $0E from odd sector instead. The discard of lower bit here is suspicious.",
+"BoxMode":false,
+"MaxWidth":80,
+"BackgroundColor":-256}},
 
 "UserLabels":{
 "12":{
@@ -397,7 +424,7 @@
 "LabelAnno":"None"},
 
 "2437":{
-"Label":"memsize",
+"Label":"rwtsbuf",
 "Value":14725,
 "Source":"User",
 "Type":"GlobalAddr",
@@ -446,7 +473,7 @@
 "LabelAnno":"None"},
 
 "2448":{
-"Label":"memsize_tmp",
+"Label":"rwtsbuf_tmp",
 "Value":14736,
 "Source":"User",
 "Type":"GlobalAddr",
@@ -548,6 +575,83 @@
 "Value":12786,
 "Source":"User",
 "Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"724":{
+"Label":"dload",
+"Value":13012,
+"Source":"User",
+"Type":"GlobalAddr",
+"LabelAnno":"None"},
+
+"2520":{
+"Label":"sector01",
+"Value":14808,
+"Source":"User",
+"Type":"NonUniqueLocalAddr",
+"LabelAnno":"None"},
+
+"2534":{
+"Label":"sector0e",
+"Value":14822,
+"Source":"User",
+"Type":"NonUniqueLocalAddr",
+"LabelAnno":"None"},
+
+"2543":{
+"Label":"sector0f",
+"Value":14831,
+"Source":"User",
+"Type":"NonUniqueLocalAddr",
+"LabelAnno":"None"},
+
+"2533":{
+"Label":"rts",
+"Value":14821,
+"Source":"User",
+"Type":"NonUniqueLocalAddr",
+"LabelAnno":"None"},
+
+"2556":{
+"Label":"ret",
+"Value":14844,
+"Source":"User",
+"Type":"NonUniqueLocalAddr",
+"LabelAnno":"None"},
+
+"2583":{
+"Label":"rts",
+"Value":14871,
+"Source":"User",
+"Type":"NonUniqueLocalAddr",
+"LabelAnno":"None"},
+
+"2558":{
+"Label":"sector_other",
+"Value":14846,
+"Source":"User",
+"Type":"NonUniqueLocalAddr",
+"LabelAnno":"None"},
+
+"2569":{
+"Label":"odd",
+"Value":14857,
+"Source":"User",
+"Type":"NonUniqueLocalAddr",
+"LabelAnno":"None"},
+
+"2571":{
+"Label":"sub",
+"Value":14859,
+"Source":"User",
+"Type":"NonUniqueLocalAddr",
+"LabelAnno":"None"},
+
+"2506":{
+"Label":"sector",
+"Value":14794,
+"Source":"User",
+"Type":"NonUniqueLocalAddr",
 "LabelAnno":"None"}},
 
 "OperandFormats":{
@@ -693,6 +797,38 @@
 "SubFormat":"Decimal",
 "SymbolRef":null},
 
+"1124":{
+"Length":2,
+"Format":"NumericLE",
+"SubFormat":"Symbol",
+"SymbolRef":{
+"Label":"rwtscmd",
+"Part":"Low"}},
+
+"1126":{
+"Length":2,
+"Format":"NumericLE",
+"SubFormat":"Symbol",
+"SymbolRef":{
+"Label":"rwtscmd",
+"Part":"High"}},
+
+"1168":{
+"Length":2,
+"Format":"NumericLE",
+"SubFormat":"Symbol",
+"SymbolRef":{
+"Label":"rwtscmd",
+"Part":"Low"}},
+
+"1170":{
+"Length":2,
+"Format":"NumericLE",
+"SubFormat":"Symbol",
+"SymbolRef":{
+"Label":"rwtscmd",
+"Part":"High"}},
+
 "1813":{
 "Length":2,
 "Format":"NumericLE",
@@ -741,6 +877,12 @@
 "Length":2,
 "Format":"NumericLE",
 "SubFormat":"Hex",
+"SymbolRef":null},
+
+"2584":{
+"Length":1,
+"Format":"Junk",
+"SubFormat":"None",
 "SymbolRef":null}},
 
 "LvTables":{
