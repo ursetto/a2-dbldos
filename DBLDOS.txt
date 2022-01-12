@@ -1,5 +1,6 @@
                    ; DBLDOS -- a program by Jason Coleman (1986) which adds 3 commands,
-                   ; DCAT/DLOAD/DSAVE, to BASIC.SYSTEM.
+                   ; DCAT/DLOAD/DSAVE, to BASIC.SYSTEM. Originally published in machine language
+                   ; format in COMPUTE! Magazine, Oct 1987, page 90.
                    ; 
                    ; DCAT is experimentally confirmed to CATALOG DOS 3.3 disks, and DLOAD to load
                    ; BASIC and binary programs from a DOS 3.3 disk.
@@ -9,12 +10,18 @@
                    ; Reference Manual.
                    P8_READ_BLOCK         .eq     $80    {const}          ;(3:Unit/1,Buff,BlkNum)
                    P8_WRITE_BLOCK        .eq     $81    {const}          ;(3:Unit/1,Buff,BlkNum)
+                   rwtsptr               .eq     $00    {addr/2}
+                   temp06                .eq     $06    {addr/2}
                    MON_A1L               .eq     $3c                     ;general purpose
                    MON_A1H               .eq     $3d                     ;general purpose
                    MON_A2L               .eq     $3e                     ;general purpose
                    MON_A2H               .eq     $3f                     ;general purpose
                    MON_A4L               .eq     $42                     ;general purpose
                    MON_A4H               .eq     $43                     ;general purpose
+                   BAS_TEXTTAB           .eq     $67    {addr/2}         ;pointer to start of Applesoft program (2b)
+                   BAS_VARTAB            .eq     $69    {addr/2}         ;pointer to start of Applesoft variables (2b)
+                   BAS_MEMSIZE           .eq     $73    {addr/2}         ;HIMEM (2b)
+                   BAS_PRGEND            .eq     $af    {addr/2}         ;pointer to end of program (2b)
                    BI_EXTRNCMD           .eq     $be06  {addr/3}         ;Called for added CMD syntaxing
                    BI_ERROUT             .eq     $be09                   ;Handles ONERR or prints error
                    BI_DEFSLT             .eq     $be3c                   ;Default slot, set by 'S' parm
@@ -101,7 +108,7 @@
 3085: 84 3c                              sty     MON_A1L                 ;0
 3087: 84 42                              sty     MON_A4L
 3089: 8c 07 be                           sty     BI_EXTRNCMD+1
-308c: ad 5e 30                           lda     relocate_to
+308c: ad 5e 30                           lda     relocate_to             ;where we relocated handler_entry (page $31) to
 308f: 85 43                              sta     MON_A4H
 3091: 8d 08 be                           sta     BI_EXTRNCMD+2
 3094: 20 2c fe                           jsr     MON_MOVE
@@ -113,8 +120,11 @@
 30a2: d0 f5                              bne     write_start_msg
 30a4: 60           @exit                 rts
 
-30a5: c4 c3 c1 d4+ startup_msg           .str    ↑“DCAT, DSAVE, AND DLOAD NOW INSTALLED”,$8d,“WRITTEN BY JASON C”
-                                          +      “OLEMAN, JULY, 1986”,$8d,$8d
+30a5: c4 c3 c1 d4+ startup_msg           .str    ↑“DCAT, DSAVE, AND DLOAD NOW INSTALLED”
+30c9: 8d                                 .dd1    $8d
+30ca: d7 d2 c9 d4+                       .str    ↑“WRITTEN BY JASON COLEMAN, JULY, 1986”
+30ee: 8d                                 .dd1    $8d
+30ef: 8d                                 .dd1    $8d
 30f0: 00 00 00 00+                       .fill   16,$00
 
 3100: d8           handler_entry         cld
@@ -146,7 +156,7 @@
 3132: e8                                 inx
 3133: e0 05                              cpx     #$05                    ;5 chars
 3135: d0 ec                              bne     dload_char
-3137: 4c d4 32                           jmp     L32D4
+3137: 4c d4 32                           jmp     dload
 
 313a: a0 00        check_dsave           ldy     #$00
 313c: a2 00                              ldx     #$00
@@ -168,80 +178,88 @@
 3159: c4 d3 c1 d6+ DSAVE_str             .str    ↑“DSAVE”
 315e: c4 cc cf c1+ DLOAD_str             .str    ↑“DLOAD”
 
-3163: 8e 55 be     dcat                  stx     BI_PBITS+1
+                   ; Inform BI of DCAT parsing params, and parse it.
+                   ;   DCAT [Sn,Dn]
+                   ; 
+                   ; Filename may be provided, but will be ignored (quirk of BASIC.SYSTEM). (Note:
+                   ; syntax error results if filename is provided along with slot/drive; unknown
+                   ; why.)
+3163: 8e 55 be     dcat                  stx     BI_PBITS+1              ;#$04 = BI_SD (slot/drive)
 3166: ca                                 dex
-3167: 8e 52 be                           stx     BI_XLEN
+3167: 8e 52 be                           stx     BI_XLEN                 ;cmd len-1
 316a: a9 31                              lda     #>dcat_xtrn
 316c: 8d 51 be                           sta     BI_XTRNADDR+1
 316f: a9 80                              lda     #<dcat_xtrn
 3171: 8d 50 be                           sta     BI_XTRNADDR
-3174: a9 00                              lda     #$00
+3174: a9 00                              lda     #$00                    ;0 = external command
 3176: 8d 53 be                           sta     BI_XCNUM
-3179: a9 10                              lda     #$10
-317b: 8d 54 be                           sta     BI_PBITS
+3179: a9 10                              lda     #$10                    ;At least one bit must be set in PBITS
+317b: 8d 54 be                           sta     BI_PBITS                ;so BI_FNOPT ($10) is typical and harmless
 317e: 18                                 clc
 317f: 60                                 rts                             ;Return to BASIC to parse command line
 
                    ; Once the DCAT command line has been parsed successfully by BASIC, we resume
                    ; here.
-3180: ad 61 be     dcat_xtrn             lda     BI_VSLOT
+3180: ad 61 be     dcat_xtrn             lda     BI_VSLOT                ;update BASIC's default SLOT from params
 3183: 8d 3c be                           sta     BI_DEFSLT
-3186: 0a                                 asl     A
+3186: 0a                                 asl     A                       ;A=slot*16 (unit number)
 3187: 0a                                 asl     A
 3188: 0a                                 asl     A
 3189: 0a                                 asl     A
-318a: ae 62 be                           ldx     BI_VDRIV
+318a: ae 62 be                           ldx     BI_VDRIV                ;update default DRIVE from params
 318d: 8e 3d be                           stx     BI_DEFDRV
 3190: ca                                 dex
-3191: f0 02                              beq     L3195
-3193: 09 80                              ora     #$80
-3195: 8d 84 39     L3195                 sta     L3984
-3198: a9 80                              lda     #$80
-319a: 8d 83 39                           sta     L3983
-319d: a9 11                              lda     #$11
+3191: f0 02                              beq     @d1
+3193: 09 80                              ora     #$80                    ;if drive 2, set high bit of unit number
+3195: 8d 84 39     @d1                   sta     unit                    ;as per ProDOS requirements
+3198: a9 80                              lda     #$80                    ;read
+319a: 8d 83 39                           sta     rwtscmd
+319d: a9 11                              lda     #$11                    ;DOS VTOC
 319f: a0 00                              ldy     #$00
-31a1: 8d 87 39                           sta     L3987
-31a4: 8c 88 39                           sty     L3988
-31a7: a5 74                              lda     $74
-31a9: 8d 86 39                           sta     L3986
+31a1: 8d 87 39                           sta     track
+31a4: 8c 88 39                           sty     sector
+31a7: a5 74                              lda     BAS_MEMSIZE+1
+31a9: 8d 86 39                           sta     rwtsbuf+1
 31ac: a9 00                              lda     #$00
-31ae: 8d 85 39                           sta     L3985
-31b1: a0 39                              ldy     #$39
-31b3: a9 83                              lda     #$83
-31b5: 20 18 39                           jsr     L3918
-31b8: 90 03                              bcc     L31BD
-31ba: 4c 7f 39                           jmp     L397F
+31ae: 8d 85 39                           sta     rwtsbuf
+31b1: a0 39                              ldy     #>rwtscmd
+31b3: a9 83                              lda     #<rwtscmd
+31b5: 20 18 39                           jsr     rwts
+31b8: 90 03                              bcc     catalog
+31ba: 4c 7f 39                           jmp     error
 
-31bd: 20 62 fc     L31BD                 jsr     MON_CR
+31bd: 20 62 fc     catalog               jsr     MON_CR
 31c0: a0 06                              ldy     #$06
-31c2: b1 73                              lda     ($73),y
-31c4: 85 02                              sta     $02
+31c2: b1 73                              lda     (BAS_MEMSIZE),y         ;note we use $73 instead of $00
+31c4: 85 02                              sta     $02                     ;temp -- save vol #
 31c6: a0 0a                              ldy     #$0a
-31c8: b9 9c 32     L31C8                 lda     disk_volume_str,y
+31c8: b9 9c 32     print_volume          lda     disk_volume_str,y
 31cb: 20 ed fd                           jsr     MON_COUT
 31ce: 88                                 dey
-31cf: 10 f7                              bpl     L31C8
+31cf: 10 f7                              bpl     print_volume
 31d1: a9 a0                              lda     #$a0
 31d3: 20 ed fd                           jsr     MON_COUT
-31d6: a5 02                              lda     $02
-31d8: 20 a7 32                           jsr     L32A7
+31d6: a5 02                              lda     $02                     ;restore temp -- why not move the vol # lookup here?
+31d8: 20 a7 32                           jsr     print_3_digits
 31db: 20 62 fc                           jsr     MON_CR
 31de: 20 62 fc                           jsr     MON_CR
 31e1: a0 0f                              ldy     #$0f
-31e3: 8c 88 39                           sty     L3988
-31e6: a0 39        L31E6                 ldy     #$39
-31e8: a9 83                              lda     #$83
-31ea: 20 18 39                           jsr     L3918
-31ed: 90 03                              bcc     L31F2
-31ef: 4c 7f 39                           jmp     L397F
+31e3: 8c 88 39                           sty     sector
+31e6: a0 39        L31E6                 ldy     #>rwtscmd
+31e8: a9 83                              lda     #<rwtscmd
+31ea: 20 18 39                           jsr     rwts
+31ed: 90 03                              bcc     file_entry
+31ef: 4c 7f 39                           jmp     error
 
-31f2: a5 74        L31F2                 lda     $74
-31f4: 85 01                              sta     $01
-31f6: a5 73                              lda     $73
-31f8: 85 00                              sta     $00
+                   NOTE: zp $00 is used as a temp pointer into our buffer. Also note it is made the
+                   same as $73 (which we used directly above, oddly).
+31f2: a5 74        file_entry            lda     BAS_MEMSIZE+1
+31f4: 85 01                              sta     rwtsptr+1
+31f6: a5 73                              lda     BAS_MEMSIZE
+31f8: 85 00                              sta     rwtsptr
 31fa: a0 0b                              ldy     #$0b
 31fc: 84 03        L31FC                 sty     $03
-31fe: b1 00                              lda     ($00),y
+31fe: b1 00                              lda     (rwtsptr),y
 3200: d0 03                              bne     L3205
 3202: 4c 92 32                           jmp     L3292
 
@@ -249,15 +267,15 @@
 3207: f0 76                              beq     L327F
 3209: c8                                 iny
 320a: c8                                 iny
-320b: b1 00                              lda     ($00),y
+320b: b1 00                              lda     (rwtsptr),y
 320d: 30 08                              bmi     L3217
-320f: a9 a0                              lda     #$a0
+320f: a9 a0                              lda     #‘ ’ | $80
 3211: 20 ed fd                           jsr     MON_COUT
 3214: 4c 1c 32                           jmp     L321C
 
-3217: a9 aa        L3217                 lda     #$aa
+3217: a9 aa        L3217                 lda     #‘*’ | $80              ;locked
 3219: 20 ed fd                           jsr     MON_COUT
-321c: b1 00        L321C                 lda     ($00),y
+321c: b1 00        L321C                 lda     (rwtsptr),y
 321e: 29 7f                              and     #$7f
 3220: f0 0e                              beq     L3230
 3222: c9 01                              cmp     #$01
@@ -268,25 +286,25 @@
 322c: f0 0e                              beq     L323C
 322e: d0 4f                              bne     L327F
 
-3230: a9 d4        L3230                 lda     #$d4
-3232: d0 0a                              bne     L323E
+3230: a9 d4        L3230                 lda     #‘T’ | $80              ;text
+3232: d0 0a                              bne     cout
 
-3234: a9 c9        L3234                 lda     #$c9
-3236: d0 06                              bne     L323E
+3234: a9 c9        L3234                 lda     #‘I’ | $80              ;int basic
+3236: d0 06                              bne     cout
 
-3238: a9 c1        L3238                 lda     #$c1
-323a: d0 02                              bne     L323E
+3238: a9 c1        L3238                 lda     #‘A’ | $80              ;applesoft
+323a: d0 02                              bne     cout
 
-323c: a9 c2        L323C                 lda     #$c2
-323e: 20 ed fd     L323E                 jsr     MON_COUT
-3241: a9 a0                              lda     #$a0
+323c: a9 c2        L323C                 lda     #‘B’ | $80              ;binary
+323e: 20 ed fd     cout                  jsr     MON_COUT
+3241: a9 a0                              lda     #‘ ’ | $80
 3243: 20 ed fd                           jsr     MON_COUT
 3246: a5 03                              lda     $03
 3248: 18                                 clc
 3249: 69 21                              adc     #$21
 324b: a8                                 tay
-324c: b1 00                              lda     ($00),y
-324e: 20 a7 32                           jsr     L32A7
+324c: b1 00                              lda     (rwtsptr),y
+324e: 20 a7 32                           jsr     print_3_digits
 3251: a9 a0                              lda     #$a0
 3253: 20 ed fd                           jsr     MON_COUT
 3256: a4 03                              ldy     $03
@@ -294,7 +312,7 @@
 3259: c8                                 iny
 325a: c8                                 iny
 325b: a2 00                              ldx     #$00
-325d: b1 00        L325D                 lda     ($00),y
+325d: b1 00        L325D                 lda     (rwtsptr),y
 325f: 20 ed fd                           jsr     MON_COUT
 3262: c8                                 iny
 3263: e8                                 inx
@@ -316,7 +334,7 @@
 3285: b0 03                              bcs     L328A
 3287: 4c fc 31                           jmp     L31FC
 
-328a: ce 88 39     L328A                 dec     L3988
+328a: ce 88 39     L328A                 dec     sector
 328d: f0 03                              beq     L3292
 328f: 4c e6 31                           jmp     L31E6
 
@@ -328,35 +346,35 @@
 
 329c: c5 cd d5 cc+ disk_volume_str       .str    ↑“EMULOV KSID”
 
-32a7: 8d cf 32     L32A7                 sta     L32CF
+32a7: 8d cf 32     print_3_digits        sta     num_tmp                 ;yet another temp stored outside zp
 32aa: a0 02                              ldy     #$02
-32ac: a9 00        L32AC                 lda     #$00
+32ac: a9 00        @start                lda     #$00
 32ae: 48                                 pha
-32af: ad cf 32     L32AF                 lda     L32CF
-32b2: d9 d1 32                           cmp     L32D1,y
-32b5: 90 0e                              bcc     L32C5
-32b7: f9 d1 32                           sbc     L32D1,y
-32ba: 8d cf 32                           sta     L32CF
+32af: ad cf 32     @loop                 lda     num_tmp
+32b2: d9 d1 32                           cmp     places,y
+32b5: 90 0e                              bcc     print_place
+32b7: f9 d1 32                           sbc     places,y
+32ba: 8d cf 32                           sta     num_tmp
 32bd: 68                                 pla
 32be: 18                                 clc
 32bf: 69 01                              adc     #$01
 32c1: 48                                 pha
-32c2: 4c af 32                           jmp     L32AF
+32c2: 4c af 32                           jmp     @loop
 
-32c5: 68           L32C5                 pla
+32c5: 68           print_place           pla
 32c6: 09 b0                              ora     #$b0
 32c8: 20 ed fd                           jsr     MON_COUT
-32cb: 88                                 dey
-32cc: 10 de                              bpl     L32AC
+32cb: 88                                 dey                             ;go to next place
+32cc: 10 de                              bpl     @start
 32ce: 60                                 rts
 
-32cf: 00           L32CF                 .dd1    $00
-32d0: 00                                 .dd1    $00
-32d1: 01           L32D1                 .dd1    $01
-32d2: 0a                                 .dd1    $0a
-32d3: 64                                 .dd1    $64
+32cf: 00           num_tmp               .dd1    $00
+32d0: 00                                 .dd1    $00                     ;unused
+32d1: 01           places                .dd1    1                       ;ones
+32d2: 0a                                 .dd1    10                      ;tens
+32d3: 64                                 .dd1    100                     ;hundreds place
 
-32d4: a2 00        L32D4                 ldx     #$00
+32d4: a2 00        dload                 ldx     #$00
 32d6: b9 00 02     L32D6                 lda     $0200,y
 32d9: c8                                 iny
 32da: c9 8d                              cmp     #$8d
@@ -408,26 +426,26 @@
 3334: ca                                 dex
 3335: f0 02                              beq     L3339
 3337: 09 80                              ora     #$80
-3339: 8d 84 39     L3339                 sta     L3984
-333c: a5 74                              lda     $74
-333e: 8d 86 39                           sta     L3986
+3339: 8d 84 39     L3339                 sta     unit
+333c: a5 74                              lda     BAS_MEMSIZE+1
+333e: 8d 86 39                           sta     rwtsbuf+1
 3341: a9 00                              lda     #$00
-3343: 8d 85 39                           sta     L3985
+3343: 8d 85 39                           sta     rwtsbuf
 3346: a9 11                              lda     #$11
-3348: 8d 87 39                           sta     L3987
+3348: 8d 87 39                           sta     track
 334b: a9 0f                              lda     #$0f
-334d: 8d 88 39                           sta     L3988
+334d: 8d 88 39                           sta     sector
 3350: a0 39        L3350                 ldy     #$39
 3352: a9 83                              lda     #$83
-3354: 20 18 39                           jsr     L3918
+3354: 20 18 39                           jsr     rwts
 3357: 90 03                              bcc     L335C
-3359: 4c 7f 39                           jmp     L397F
+3359: 4c 7f 39                           jmp     error
 
 335c: a9 0e        L335C                 lda     #$0e
 335e: a8           L335E                 tay
 335f: a2 00                              ldx     #$00
 3361: 84 02                              sty     $02
-3363: b1 73        L3363                 lda     ($73),y
+3363: b1 73        L3363                 lda     (BAS_MEMSIZE),y
 3365: f0 20                              beq     L3387
 3367: dd 01 02                           cmp     $0201,x
 336a: d0 09                              bne     L3375
@@ -440,10 +458,10 @@
 3377: 18                                 clc
 3378: 69 23                              adc     #$23
 337a: 90 e2                              bcc     L335E
-337c: ac 88 39                           ldy     L3988
+337c: ac 88 39                           ldy     sector
 337f: 88                                 dey
 3380: f0 05                              beq     L3387
-3382: 8c 88 39                           sty     L3988
+3382: 8c 88 39                           sty     sector
 3385: d0 c9                              bne     L3350
 
 3387: a9 06        L3387                 lda     #$06
@@ -453,7 +471,7 @@
 338b: e0 1e        L338B                 cpx     #$1e
 338d: f0 0a                              beq     L3399
 338f: c8                                 iny
-3390: b1 73                              lda     ($73),y
+3390: b1 73                              lda     (BAS_MEMSIZE),y
 3392: c9 a0                              cmp     #$a0
 3394: d0 df                              bne     L3375
 3396: e8                                 inx
@@ -462,21 +480,21 @@
 339b: 88                                 dey
 339c: 88                                 dey
 339d: 88                                 dey
-339e: b1 73                              lda     ($73),y
+339e: b1 73                              lda     (BAS_MEMSIZE),y
 33a0: 30 e5                              bmi     L3387
-33a2: 8d 87 39                           sta     L3987
+33a2: 8d 87 39                           sta     track
 33a5: c8                                 iny
-33a6: b1 73                              lda     ($73),y
-33a8: 8d 88 39                           sta     L3988
-33ab: ae 86 39                           ldx     L3986
+33a6: b1 73                              lda     (BAS_MEMSIZE),y
+33a8: 8d 88 39                           sta     sector
+33ab: ae 86 39                           ldx     rwtsbuf+1
 33ae: e8                                 inx
 33af: e8                                 inx
-33b0: 8e 86 39                           stx     L3986
-33b3: 86 07                              stx     $07
+33b0: 8e 86 39                           stx     rwtsbuf+1
+33b3: 86 07                              stx     temp06+1
 33b5: a2 00                              ldx     #$00
-33b7: 86 06                              stx     $06
+33b7: 86 06                              stx     temp06
 33b9: c8                                 iny
-33ba: b1 73                              lda     ($73),y
+33ba: b1 73                              lda     (BAS_MEMSIZE),y
 33bc: 29 7f                              and     #$7f
 33be: c9 02                              cmp     #$02
 33c0: f0 0b                              beq     L33CD
@@ -490,86 +508,86 @@
 
 33cd: a9 83        L33CD                 lda     #$83
 33cf: a0 39                              ldy     #$39
-33d1: 20 18 39                           jsr     L3918
+33d1: 20 18 39                           jsr     rwts
 33d4: 90 03                              bcc     L33D9
-33d6: 4c 7f 39                           jmp     L397F
+33d6: 4c 7f 39                           jmp     error
 
-33d9: a5 67        L33D9                 lda     $67
-33db: a4 68                              ldy     $68
+33d9: a5 67        L33D9                 lda     BAS_TEXTTAB
+33db: a4 68                              ldy     BAS_TEXTTAB+1
 33dd: 38                                 sec
 33de: e9 02                              sbc     #$02
 33e0: b0 01                              bcs     L33E3
 33e2: 88                                 dey
-33e3: 8d 85 39     L33E3                 sta     L3985
-33e6: 8c 86 39                           sty     L3986
+33e3: 8d 85 39     L33E3                 sta     rwtsbuf
+33e6: 8c 86 39                           sty     rwtsbuf+1
 33e9: a0 00                              ldy     #$00
 33eb: 8c 8b 34                           sty     L348B
 33ee: c8                                 iny
-33ef: b1 06                              lda     ($06),y
+33ef: b1 06                              lda     (temp06),y
 33f1: 8d 8f 34                           sta     L348F
 33f4: c8                                 iny
-33f5: b1 06                              lda     ($06),y
+33f5: b1 06                              lda     (temp06),y
 33f7: 8d 8e 34                           sta     L348E
 33fa: a0 0c                              ldy     #$0c
-33fc: b1 06        L33FC                 lda     ($06),y
+33fc: b1 06        L33FC                 lda     (temp06),y
 33fe: f0 29                              beq     L3429
-3400: 8d 87 39                           sta     L3987
+3400: 8d 87 39                           sta     track
 3403: c8                                 iny
-3404: b1 06                              lda     ($06),y
+3404: b1 06                              lda     (temp06),y
 3406: c8                                 iny
-3407: 8d 88 39                           sta     L3988
+3407: 8d 88 39                           sta     sector
 340a: 84 02                              sty     $02
 340c: a9 83                              lda     #$83
 340e: a0 39                              ldy     #$39
-3410: 20 18 39                           jsr     L3918
+3410: 20 18 39                           jsr     rwts
 3413: 90 03                              bcc     L3418
-3415: 4c 7f 39                           jmp     L397F
+3415: 4c 7f 39                           jmp     error
 
 3418: a4 02        L3418                 ldy     $02
 341a: f0 26                              beq     L3442
-341c: ee 86 39                           inc     L3986
-341f: ad 86 39                           lda     L3986
-3422: c5 74                              cmp     $74
+341c: ee 86 39                           inc     rwtsbuf+1
+341f: ad 86 39                           lda     rwtsbuf+1
+3422: c5 74                              cmp     BAS_MEMSIZE+1
 3424: 90 d6                              bcc     L33FC
 3426: a9 0e                              lda     #$0e
 3428: 60                                 rts
 
-3429: ad 85 39     L3429                 lda     L3985
-342c: 85 69                              sta     $69
-342e: 85 af                              sta     $af
-3430: ad 86 39                           lda     L3986
-3433: 85 6a                              sta     $6a
-3435: 85 b0                              sta     $b0
+3429: ad 85 39     L3429                 lda     rwtsbuf
+342c: 85 69                              sta     BAS_VARTAB
+342e: 85 af                              sta     BAS_PRGEND
+3430: ad 86 39                           lda     rwtsbuf+1
+3433: 85 6a                              sta     BAS_VARTAB+1
+3435: 85 b0                              sta     BAS_PRGEND+1
 3437: a0 00                              ldy     #$00
 3439: 98                                 tya
-343a: c6 67                              dec     $67
-343c: 91 67                              sta     ($67),y
-343e: e6 67                              inc     $67
+343a: c6 67                              dec     BAS_TEXTTAB
+343c: 91 67                              sta     (BAS_TEXTTAB),y
+343e: e6 67                              inc     BAS_TEXTTAB
 3440: 18                                 clc
 3441: 60                                 rts
 
-3442: ad 85 39     L3442                 lda     L3985
+3442: ad 85 39     L3442                 lda     rwtsbuf
 3445: 8d 8c 34                           sta     L348C
-3448: ad 86 39                           lda     L3986
+3448: ad 86 39                           lda     rwtsbuf+1
 344b: 8d 8d 34                           sta     L348D
-344e: a5 06                              lda     $06
-3450: 8d 85 39                           sta     L3985
-3453: a5 07                              lda     $07
-3455: 8d 86 39                           sta     L3986
+344e: a5 06                              lda     temp06
+3450: 8d 85 39                           sta     rwtsbuf
+3453: a5 07                              lda     temp06+1
+3455: 8d 86 39                           sta     rwtsbuf+1
 3458: ad 8f 34                           lda     L348F
-345b: 8d 87 39                           sta     L3987
+345b: 8d 87 39                           sta     track
 345e: ad 8e 34                           lda     L348E
-3461: 8d 88 39                           sta     L3988
-3464: a9 83                              lda     #$83
-3466: a0 39                              ldy     #$39
-3468: 20 18 39                           jsr     L3918
+3461: 8d 88 39                           sta     sector
+3464: a9 83                              lda     #<rwtscmd
+3466: a0 39                              ldy     #>rwtscmd
+3468: 20 18 39                           jsr     rwts
 346b: 90 03                              bcc     L3470
-346d: 4c 7f 39                           jmp     L397F
+346d: 4c 7f 39                           jmp     error
 
 3470: ad 8c 34     L3470                 lda     L348C
-3473: 8d 85 39                           sta     L3985
+3473: 8d 85 39                           sta     rwtsbuf
 3476: ad 8d 34                           lda     L348D
-3479: 8d 86 39                           sta     L3986
+3479: 8d 86 39                           sta     rwtsbuf+1
 347c: a0 0c                              ldy     #$0c
 347e: ad 8b 34                           lda     L348B
 3481: d0 03                              bne     L3486
@@ -584,49 +602,49 @@
 348e: 00           L348E                 .dd1    $00
 348f: 00           L348F                 .dd1    $00
 
-3490: a9 83        L3490                 lda     #$83
-3492: a0 39                              ldy     #$39
-3494: 20 18 39                           jsr     L3918
+3490: a9 83        L3490                 lda     #<rwtscmd
+3492: a0 39                              ldy     #>rwtscmd
+3494: 20 18 39                           jsr     rwts
 3497: 90 03                              bcc     L349C
-3499: 4c 7f 39                           jmp     L397F
+3499: 4c 7f 39                           jmp     error
 
 349c: a0 01        L349C                 ldy     #$01
-349e: b1 06                              lda     ($06),y
+349e: b1 06                              lda     (temp06),y
 34a0: 8d 8f 34                           sta     L348F
 34a3: c8                                 iny
-34a4: b1 06                              lda     ($06),y
+34a4: b1 06                              lda     (temp06),y
 34a6: 8d 8e 34                           sta     L348E
 34a9: a0 0c                              ldy     #$0c
 34ab: 8c 8b 34                           sty     L348B
-34ae: b1 06                              lda     ($06),y
-34b0: 8d 87 39                           sta     L3987
+34ae: b1 06                              lda     (temp06),y
+34b0: 8d 87 39                           sta     track
 34b3: c8                                 iny
-34b4: b1 06                              lda     ($06),y
+34b4: b1 06                              lda     (temp06),y
 34b6: c8                                 iny
 34b7: 84 02                              sty     $02
-34b9: 8d 88 39                           sta     L3988
-34bc: a5 74                              lda     $74
-34be: 8d 86 39                           sta     L3986
+34b9: 8d 88 39                           sta     sector
+34bc: a5 74                              lda     BAS_MEMSIZE+1
+34be: 8d 86 39                           sta     rwtsbuf+1
 34c1: a0 00                              ldy     #$00
-34c3: 8c 85 39                           sty     L3985
+34c3: 8c 85 39                           sty     rwtsbuf
 34c6: a9 83                              lda     #$83
 34c8: a0 39                              ldy     #$39
-34ca: 20 18 39                           jsr     L3918
+34ca: 20 18 39                           jsr     rwts
 34cd: 90 03                              bcc     L34D2
-34cf: 4c 7f 39                           jmp     L397F
+34cf: 4c 7f 39                           jmp     error
 
 34d2: ae 59 be     L34D2                 ldx     BI_VADDR+1
 34d5: ad 58 be                           lda     BI_VADDR
 34d8: ac 57 be                           ldy     BI_FBITS+1
 34db: 30 0c                              bmi     L34E9
 34dd: a0 01                              ldy     #$01
-34df: b1 73                              lda     ($73),y
+34df: b1 73                              lda     (BAS_MEMSIZE),y
 34e1: 85 04                              sta     $04
 34e3: 88                                 dey
 34e4: aa                                 tax
-34e5: b1 73                              lda     ($73),y
+34e5: b1 73                              lda     (BAS_MEMSIZE),y
 34e7: 85 03                              sta     $03
-34e9: e4 74        L34E9                 cpx     $74
+34e9: e4 74        L34E9                 cpx     BAS_MEMSIZE+1
 34eb: 90 03                              bcc     L34F0
 34ed: a9 0e                              lda     #$0e
 34ef: 60                                 rts
@@ -638,36 +656,36 @@
 34f6: 85 08        L34F6                 sta     $08
 34f8: 86 09                              stx     $09
 34fa: a0 00                              ldy     #$00
-34fc: b1 73        L34FC                 lda     ($73),y
+34fc: b1 73        L34FC                 lda     (BAS_MEMSIZE),y
 34fe: 91 08                              sta     ($08),y
 3500: c8                                 iny
 3501: d0 f9                              bne     L34FC
 3503: a5 08                              lda     $08
-3505: 8d 85 39                           sta     L3985
+3505: 8d 85 39                           sta     rwtsbuf
 3508: a4 09                              ldy     $09
 350a: c8                                 iny
-350b: 8c 86 39                           sty     L3986
+350b: 8c 86 39                           sty     rwtsbuf+1
 350e: a4 02        L350E                 ldy     $02
 3510: d0 03                              bne     L3515
 3512: 4c 42 34                           jmp     L3442
 
-3515: b1 06        L3515                 lda     ($06),y
+3515: b1 06        L3515                 lda     (temp06),y
 3517: f0 25                              beq     L353E
-3519: 8d 87 39                           sta     L3987
+3519: 8d 87 39                           sta     track
 351c: c8                                 iny
-351d: b1 06                              lda     ($06),y
-351f: 8d 88 39                           sta     L3988
+351d: b1 06                              lda     (temp06),y
+351f: 8d 88 39                           sta     sector
 3522: c8                                 iny
 3523: 84 02                              sty     $02
 3525: a9 83                              lda     #$83
 3527: a0 39                              ldy     #$39
-3529: 20 18 39                           jsr     L3918
+3529: 20 18 39                           jsr     rwts
 352c: 90 03                              bcc     L3531
-352e: 4c 7f 39                           jmp     L397F
+352e: 4c 7f 39                           jmp     error
 
-3531: ee 86 39     L3531                 inc     L3986
-3534: ad 86 39                           lda     L3986
-3537: c5 74                              cmp     $74
+3531: ee 86 39     L3531                 inc     rwtsbuf+1
+3534: ad 86 39                           lda     rwtsbuf+1
+3537: c5 74                              cmp     BAS_MEMSIZE+1
 3539: 90 d3                              bcc     L350E
 353b: a9 0e                              lda     #$0e
 353d: 60                                 rts
@@ -726,9 +744,9 @@
 35a0: ca                                 dex
 35a1: f0 02                              beq     L35A5
 35a3: 09 80                              ora     #$80
-35a5: 8d 84 39     L35A5                 sta     L3984
+35a5: 8d 84 39     L35A5                 sta     unit
 35a8: a9 80                              lda     #$80
-35aa: 8d 83 39                           sta     L3983
+35aa: 8d 83 39                           sta     rwtscmd
 35ad: ad 57 be                           lda     BI_FBITS+1
 35b0: 10 0d                              bpl     L35BF
 35b2: ae 60 be                           ldx     BI_VLNTH+1
@@ -738,13 +756,13 @@
 35bb: 90 1c                              bcc     L35D9
 35bd: b0 19                              bcs     L35D8
 
-35bf: a5 b0        L35BF                 lda     $b0
+35bf: a5 b0        L35BF                 lda     BAS_PRGEND+1
 35c1: 38                                 sec
-35c2: e5 68                              sbc     $68
+35c2: e5 68                              sbc     BAS_TEXTTAB+1
 35c4: aa                                 tax
-35c5: a5 af                              lda     $af
+35c5: a5 af                              lda     BAS_PRGEND
 35c7: 38                                 sec
-35c8: e5 67                              sbc     $67
+35c8: e5 67                              sbc     BAS_TEXTTAB
 35ca: b0 01                              bcs     L35CD
 35cc: ca                                 dex
 35cd: 8e 60 be     L35CD                 stx     BI_VLNTH+1
@@ -764,51 +782,51 @@
 35e8: 38                                 sec
 35e9: 60                                 rts
 
-35ea: a4 74        L35EA                 ldy     $74
+35ea: a4 74        L35EA                 ldy     BAS_MEMSIZE+1
 35ec: c8                                 iny
 35ed: c8                                 iny
 35ee: c8                                 iny
-35ef: 8c 86 39                           sty     L3986
-35f2: 84 07                              sty     $07
+35ef: 8c 86 39                           sty     rwtsbuf+1
+35f2: 84 07                              sty     temp06+1
 35f4: a9 00                              lda     #$00
 35f6: 8d c2 36                           sta     L36C2
-35f9: 85 06                              sta     $06
-35fb: 8d 85 39                           sta     L3985
-35fe: 8d 88 39                           sta     L3988
+35f9: 85 06                              sta     temp06
+35fb: 8d 85 39                           sta     rwtsbuf
+35fe: 8d 88 39                           sta     sector
 3601: a9 11                              lda     #$11
-3603: 8d 87 39                           sta     L3987
+3603: 8d 87 39                           sta     track
 3606: a0 39                              ldy     #$39
 3608: a9 83                              lda     #$83
-360a: 20 18 39                           jsr     L3918
+360a: 20 18 39                           jsr     rwts
 360d: 90 03                              bcc     L3612
-360f: 4c 7f 39                           jmp     L397F
+360f: 4c 7f 39                           jmp     error
 
 3612: a0 01        L3612                 ldy     #$01
-3614: b1 06                              lda     ($06),y
+3614: b1 06                              lda     (temp06),y
 3616: c9 11                              cmp     #$11
 3618: f0 03                              beq     L361D
-361a: 4c 7f 39     L361A                 jmp     L397F
+361a: 4c 7f 39     L361A                 jmp     error
 
 361d: c8           L361D                 iny
-361e: b1 06                              lda     ($06),y
+361e: b1 06                              lda     (temp06),y
 3620: c9 0f                              cmp     #$0f
 3622: d0 f6                              bne     L361A
 3624: 20 fc 37                           jsr     L37FC
 3627: 90 01                              bcc     L362A
 3629: 60                                 rts
 
-362a: e6 74        L362A                 inc     $74
-362c: e6 74                              inc     $74
+362a: e6 74        L362A                 inc     BAS_MEMSIZE+1
+362c: e6 74                              inc     BAS_MEMSIZE+1
 362e: ae fb 37                           ldx     L37FB
 3631: a0 00                              ldy     #$00
 3633: 98                                 tya
-3634: 91 73        L3634                 sta     ($73),y
+3634: 91 73        L3634                 sta     (BAS_MEMSIZE),y
 3636: c8                                 iny
 3637: d0 fb                              bne     L3634
 3639: a0 0c                              ldy     #$0c
 363b: 84 08                              sty     $08
 363d: a0 c1                              ldy     #$c1
-363f: b1 06        L363F                 lda     ($06),y
+363f: b1 06        L363F                 lda     (temp06),y
 3641: f0 72                              beq     L36B5
 3643: 98                                 tya
 3644: 29 01                              and     #$01
@@ -826,7 +844,7 @@
 365a: 4a                                 lsr     A
 365b: 4a                                 lsr     A
 365c: 8d c4 36                           sta     L36C4
-365f: b1 06                              lda     ($06),y
+365f: b1 06                              lda     (temp06),y
 3661: 48                                 pha
 3662: 84 09                              sty     $09
 3664: a0 07                              ldy     #$07
@@ -848,10 +866,10 @@
 3687: 68                                 pla
 3688: d0 0f                              bne     L3699
 368a: ad c4 36     L368A                 lda     L36C4
-368d: 91 73                              sta     ($73),y
+368d: 91 73                              sta     (BAS_MEMSIZE),y
 368f: c8                                 iny
 3690: ad c6 36                           lda     L36C6
-3693: 91 73                              sta     ($73),y
+3693: 91 73                              sta     (BAS_MEMSIZE),y
 3695: c8                                 iny
 3696: 84 08                              sty     $08
 3698: 68                                 pla
@@ -867,7 +885,7 @@
 36a7: c8                                 iny
 36a8: d0 f8                              bne     L36A2
 36aa: a4 09        L36AA                 ldy     $09
-36ac: 91 06                              sta     ($06),y
+36ac: 91 06                              sta     (temp06),y
 36ae: ca                                 dex
 36af: f0 16                              beq     L36C7
 36b1: c9 00                              cmp     #$00
@@ -875,8 +893,8 @@
 36b5: 88           L36B5                 dey
 36b6: c0 37        L36B6                 cpy     #$37
 36b8: d0 85                              bne     L363F
-36ba: c6 74                              dec     $74
-36bc: c6 74                              dec     $74
+36ba: c6 74                              dec     BAS_MEMSIZE+1
+36bc: c6 74                              dec     BAS_MEMSIZE+1
 36be: a9 09                              lda     #$09
 36c0: 38                                 sec
 36c1: 60                                 rts
@@ -887,64 +905,64 @@
 36c5: 00           L36C5                 .dd1    $00
 36c6: 00           L36C6                 .dd1    $00
 
-36c7: c6 74        L36C7                 dec     $74
-36c9: c6 74                              dec     $74
+36c7: c6 74        L36C7                 dec     BAS_MEMSIZE+1
+36c9: c6 74                              dec     BAS_MEMSIZE+1
 36cb: a9 81                              lda     #$81
-36cd: 8d 83 39                           sta     L3983
+36cd: 8d 83 39                           sta     rwtscmd
 36d0: a9 11                              lda     #$11
-36d2: 8d 87 39                           sta     L3987
+36d2: 8d 87 39                           sta     track
 36d5: a9 00                              lda     #$00
-36d7: 8d 88 39                           sta     L3988
-36da: a5 07                              lda     $07
-36dc: 8d 86 39                           sta     L3986
+36d7: 8d 88 39                           sta     sector
+36da: a5 07                              lda     temp06+1
+36dc: 8d 86 39                           sta     rwtsbuf+1
 36df: a9 83                              lda     #$83
 36e1: a0 39                              ldy     #$39
-36e3: 20 18 39                           jsr     L3918
+36e3: 20 18 39                           jsr     rwts
 36e6: 90 03                              bcc     L36EB
-36e8: 4c 7f 39     L36E8                 jmp     L397F
+36e8: 4c 7f 39     L36E8                 jmp     error
 
 36eb: ad c2 36     L36EB                 lda     L36C2
-36ee: 8d 87 39                           sta     L3987
+36ee: 8d 87 39                           sta     track
 36f1: ad c3 36                           lda     L36C3
-36f4: 8d 88 39                           sta     L3988
-36f7: ce 86 39                           dec     L3986
+36f4: 8d 88 39                           sta     sector
+36f7: ce 86 39                           dec     rwtsbuf+1
 36fa: a9 83                              lda     #$83
 36fc: a0 39                              ldy     #$39
-36fe: 20 18 39                           jsr     L3918
+36fe: 20 18 39                           jsr     rwts
 3701: b0 e5                              bcs     L36E8
-3703: ce 83 39                           dec     L3983
-3706: a5 07                              lda     $07
-3708: 8d 86 39                           sta     L3986
+3703: ce 83 39                           dec     rwtscmd                 ;was write ($81), now read ($80)
+3706: a5 07                              lda     temp06+1
+3708: 8d 86 39                           sta     rwtsbuf+1
 370b: a9 11                              lda     #$11
-370d: 8d 87 39                           sta     L3987
+370d: 8d 87 39                           sta     track
 3710: a9 0f                              lda     #$0f
-3712: 8d 88 39                           sta     L3988
-3715: a0 39        L3715                 ldy     #$39
-3717: a9 83                              lda     #$83
-3719: 20 18 39                           jsr     L3918
+3712: 8d 88 39                           sta     sector
+3715: a0 39        L3715                 ldy     #>rwtscmd
+3717: a9 83                              lda     #<rwtscmd
+3719: 20 18 39                           jsr     rwts
 371c: 90 03                              bcc     L3721
-371e: 4c 7f 39                           jmp     L397F
+371e: 4c 7f 39                           jmp     error
 
 3721: a9 0b        L3721                 lda     #$0b
 3723: a8           L3723                 tay
-3724: b1 06                              lda     ($06),y
+3724: b1 06                              lda     (temp06),y
 3726: f0 11                              beq     L3739
 3728: 30 0f                              bmi     L3739
 372a: 98                                 tya
 372b: 18                                 clc
 372c: 69 23                              adc     #$23
 372e: 90 f3                              bcc     L3723
-3730: ce 88 39                           dec     L3988
+3730: ce 88 39                           dec     sector
 3733: d0 e0                              bne     L3715
 3735: a9 11                              lda     #$11
 3737: 38                                 sec
 3738: 60                                 rts
 
 3739: ad c2 36     L3739                 lda     L36C2
-373c: 91 06                              sta     ($06),y
+373c: 91 06                              sta     (temp06),y
 373e: c8                                 iny
 373f: ad c3 36                           lda     L36C3
-3742: 91 06                              sta     ($06),y
+3742: 91 06                              sta     (temp06),y
 3744: c8                                 iny
 3745: ae 57 be                           ldx     BI_FBITS+1
 3748: 10 04                              bpl     L374E
@@ -952,11 +970,11 @@
 374c: d0 02                              bne     L3750
 
 374e: a9 02        L374E                 lda     #$02
-3750: 91 06        L3750                 sta     ($06),y
+3750: 91 06        L3750                 sta     (temp06),y
 3752: c8                                 iny
 3753: a2 00                              ldx     #$00
 3755: bd 01 02     L3755                 lda     $0201,x
-3758: 91 06                              sta     ($06),y
+3758: 91 06                              sta     (temp06),y
 375a: c8                                 iny
 375b: e8                                 inx
 375c: ec 00 02                           cpx     $0200
@@ -964,24 +982,24 @@
 3761: e0 1e        L3761                 cpx     #$1e
 3763: f0 08                              beq     L376D
 3765: a9 a0                              lda     #$a0
-3767: 91 06                              sta     ($06),y
+3767: 91 06                              sta     (temp06),y
 3769: e8                                 inx
 376a: c8                                 iny
 376b: d0 f4                              bne     L3761
 376d: ad fb 37     L376D                 lda     L37FB
-3770: 91 06                              sta     ($06),y
+3770: 91 06                              sta     (temp06),y
 3772: c8                                 iny
 3773: a9 00                              lda     #$00
-3775: 91 06                              sta     ($06),y
+3775: 91 06                              sta     (temp06),y
 3777: a9 81                              lda     #$81
-3779: 8d 83 39                           sta     L3983
+3779: 8d 83 39                           sta     rwtscmd
 377c: a9 83                              lda     #$83
 377e: a0 39                              ldy     #$39
-3780: 20 18 39                           jsr     L3918
+3780: 20 18 39                           jsr     rwts
 3783: 90 03                              bcc     L3788
-3785: 4c 7f 39                           jmp     L397F
+3785: 4c 7f 39                           jmp     error
 
-3788: c6 07        L3788                 dec     $07
+3788: c6 07        L3788                 dec     temp06+1
 378a: ae 57 be                           ldx     BI_FBITS+1
 378d: 10 20                              bpl     L37AF
 378f: ae 59 be                           ldx     BI_VADDR+1
@@ -1012,22 +1030,22 @@
 37c2: 91 08                              sta     ($08),y
 37c4: a0 0c                              ldy     #$0c
 37c6: a5 08        L37C6                 lda     $08
-37c8: 8d 85 39                           sta     L3985
+37c8: 8d 85 39                           sta     rwtsbuf
 37cb: a5 09                              lda     $09
-37cd: 8d 86 39                           sta     L3986
-37d0: b1 06                              lda     ($06),y
+37cd: 8d 86 39                           sta     rwtsbuf+1
+37d0: b1 06                              lda     (temp06),y
 37d2: f0 20                              beq     L37F4
 37d4: c8                                 iny
-37d5: 8d 87 39                           sta     L3987
-37d8: b1 06                              lda     ($06),y
-37da: 8d 88 39                           sta     L3988
+37d5: 8d 87 39                           sta     track
+37d8: b1 06                              lda     (temp06),y
+37da: 8d 88 39                           sta     sector
 37dd: c8                                 iny
 37de: 8c fb 37                           sty     L37FB
 37e1: a9 83                              lda     #$83
 37e3: a0 39                              ldy     #$39
-37e5: 20 18 39                           jsr     L3918
+37e5: 20 18 39                           jsr     rwts
 37e8: 90 03                              bcc     L37ED
-37ea: 4c 7f 39                           jmp     L397F
+37ea: 4c 7f 39                           jmp     error
 
 37ed: e6 09        L37ED                 inc     $09
 37ef: ac fb 37                           ldy     L37FB
@@ -1039,29 +1057,29 @@
 
 37fb: 00           L37FB                 .dd1    $00
 
-37fc: a4 74        L37FC                 ldy     $74
+37fc: a4 74        L37FC                 ldy     BAS_MEMSIZE+1
 37fe: c8                                 iny
 37ff: c8                                 iny
-3800: 8c 86 39                           sty     L3986
+3800: 8c 86 39                           sty     rwtsbuf+1
 3803: 84 1a                              sty     $1a
 3805: a9 00                              lda     #$00
-3807: 8d 85 39                           sta     L3985
+3807: 8d 85 39                           sta     rwtsbuf
 380a: 85 19                              sta     $19
 380c: a9 11                              lda     #$11
-380e: 8d 87 39                           sta     L3987
+380e: 8d 87 39                           sta     track
 3811: a9 0f                              lda     #$0f
-3813: 8d 88 39                           sta     L3988
+3813: 8d 88 39                           sta     sector
 3816: a9 83        L3816                 lda     #$83
 3818: a0 39                              ldy     #$39
-381a: 20 18 39                           jsr     L3918
+381a: 20 18 39                           jsr     rwts
 381d: 90 03                              bcc     L3822
-381f: 4c 7f 39                           jmp     L397F
+381f: 4c 7f 39                           jmp     error
 
 3822: a0 01        L3822                 ldy     #$01
 3824: b1 19                              lda     ($19),y
 3826: c9 11                              cmp     #$11
 3828: f0 03                              beq     L382D
-382a: 4c 7f 39                           jmp     L397F
+382a: 4c 7f 39                           jmp     error
 
 382d: a9 0e        L382D                 lda     #$0e
 382f: 48           L382F                 pha
@@ -1090,7 +1108,7 @@
 3853: 18                                 clc
 3854: 69 23                              adc     #$23
 3856: 90 d7                              bcc     L382F
-3858: ce 88 39                           dec     L3988
+3858: ce 88 39                           dec     sector
 385b: d0 b9                              bne     L3816
 385d: 18                                 clc
 385e: 60                                 rts
@@ -1148,23 +1166,23 @@
 38a8: b1 19                              lda     ($19),y
 38aa: 8d c5 36                           sta     L36C5
 38ad: a9 81                              lda     #$81
-38af: 8d 83 39                           sta     L3983
+38af: 8d 83 39                           sta     rwtscmd
 38b2: a9 83                              lda     #$83
 38b4: a0 39                              ldy     #$39
-38b6: 20 18 39                           jsr     L3918
+38b6: 20 18 39                           jsr     rwts
 38b9: 90 03                              bcc     L38BE
-38bb: 4c 7f 39                           jmp     L397F
+38bb: 4c 7f 39                           jmp     error
 
-38be: ce 83 39     L38BE                 dec     L3983
+38be: ce 83 39     L38BE                 dec     rwtscmd
 38c1: ad c4 36                           lda     L36C4
-38c4: 8d 87 39                           sta     L3987
+38c4: 8d 87 39                           sta     track
 38c7: ad c5 36                           lda     L36C5
-38ca: 8d 88 39                           sta     L3988
+38ca: 8d 88 39                           sta     sector
 38cd: a9 83                              lda     #$83
 38cf: a0 39                              ldy     #$39
-38d1: 20 18 39                           jsr     L3918
+38d1: 20 18 39                           jsr     rwts
 38d4: 90 03                              bcc     L38D9
-38d6: 4c 7f 39                           jmp     L397F
+38d6: 4c 7f 39                           jmp     error
 
 38d9: 20 f7 38     L38D9                 jsr     L38F7
 38dc: a0 0c                              ldy     #$0c
@@ -1199,152 +1217,183 @@
 390e: 30 03                              bmi     L3913
 3910: 0a                                 asl     A
 3911: d0 fa                              bne     L390D
-3913: 11 06        L3913                 ora     ($06),y
-3915: 91 06                              sta     ($06),y
+3913: 11 06        L3913                 ora     (temp06),y
+3915: 91 06                              sta     (temp06),y
 3917: 60                                 rts
 
-3918: 85 00        L3918                 sta     $00
-391a: 84 01                              sty     $01
-391c: a0 01                              ldy     #$01
-391e: b1 00                              lda     ($00),y
-3920: 8d 8a 39                           sta     L398A
+                   ; Input Y,A is a pointer to a table containing command, unit, memsize, track and
+                   ; sector. Copy these into memory locations or registers to operate on, then read
+                   ; or write a track and sector.
+                   ; 
+                   ; Note that the table pointer is constant -- there's only one in this program --
+                   ; so the indirection and copying is superfluous.
+3918: 85 00        rwts                  sta     rwtsptr                 ;always #$83
+391a: 84 01                              sty     rwtsptr+1               ;always #$39
+391c: a0 01                              ldy     #$01                    ;unit
+391e: b1 00                              lda     (rwtsptr),y
+3920: 8d 8a 39                           sta     block_params+1
 3923: c8                                 iny
-3924: b1 00                              lda     ($00),y
-3926: 8d 90 39                           sta     L3990
+3924: b1 00                              lda     (rwtsptr),y             ;memsize
+3926: 8d 90 39                           sta     rwtsbuf_tmp?
 3929: c8                                 iny
-392a: b1 00                              lda     ($00),y
-392c: 8d 91 39                           sta     L3991
+392a: b1 00                              lda     (rwtsptr),y             ;memsize+1
+392c: 8d 91 39                           sta     rwtsbuf_tmp?+1
 392f: c8                                 iny
-3930: b1 00                              lda     ($00),y
+3930: b1 00                              lda     (rwtsptr),y             ;track (A)
 3932: 48                                 pha
 3933: c8                                 iny
-3934: b1 00                              lda     ($00),y
+3934: b1 00                              lda     (rwtsptr),y             ;sector (Y)
 3936: a8                                 tay
 3937: 68                                 pla
-3938: 20 b8 39                           jsr     L39B8
-393b: 8d 8d 39                           sta     L398D
-393e: 8c 8e 39                           sty     L398D+1
-3941: 8e 8f 39                           stx     L398F
-3944: a5 74                              lda     $74
-3946: 8d 8c 39                           sta     L398B+1
+3938: 20 b8 39                           jsr     ts_to_block
+393b: 8d 8d 39                           sta     block_params+4          ;block number lo
+393e: 8c 8e 39                           sty     block_params+5          ;block number hi
+3941: 8e 8f 39                           stx     rwtsbuf_tmp?-1
+3944: a5 74                              lda     BAS_MEMSIZE+1
+3946: 8d 8c 39                           sta     block_params+3          ;block buffer msb
 3949: 20 00 bf                           jsr     P8_MLI
 394c: 80                                 .dd1    P8_READ_BLOCK
-394d: 89 39                              .dd2    L3989
-394f: b0 2e                              bcs     L397F
+394d: 89 39                              .dd2    block_params
+394f: b0 2e                              bcs     error
 3951: a0 00                              ldy     #$00
-3953: b1 00                              lda     ($00),y
-3955: c9 81                              cmp     #$81
-3957: f0 3b                              beq     L3994
-3959: a5 74                              lda     $74
+3953: b1 00                              lda     (rwtsptr),y
+3955: c9 81                              cmp     #$81                    ;MLI write_block?
+3957: f0 3b                              beq     write
+3959: a5 74                              lda     BAS_MEMSIZE+1
 395b: 18                                 clc
-395c: 6d 8f 39                           adc     L398F
-395f: 8d 77 39                           sta     L3975+2
+395c: 6d 8f 39                           adc     rwtsbuf_tmp?-1
+395f: 8d 77 39                           sta     src+2
 3962: a9 00                              lda     #$00
-3964: 8d 76 39                           sta     L3975+1
-3967: ad 90 39                           lda     L3990
-396a: 8d 79 39                           sta     L3978+1
-396d: ad 91 39                           lda     L3991
-3970: 8d 7a 39                           sta     L3978+2
-3973: a0 00        L3973                 ldy     #$00
-3975: b9 00 96     L3975                 lda     $9600,y
-3978: 99 00 20     L3978                 sta     $2000,y
+3964: 8d 76 39                           sta     src+1
+3967: ad 90 39                           lda     rwtsbuf_tmp?
+396a: 8d 79 39                           sta     dst+1
+396d: ad 91 39                           lda     rwtsbuf_tmp?+1
+3970: 8d 7a 39                           sta     dst+2
+3973: a0 00        copy_sect_buf         ldy     #$00
+3975: b9 00 96     src                   lda     $9600,y                 ;updated in code
+3978: 99 00 20     dst                   sta     $2000,y                 ;updated in code
 397b: c8                                 iny
-397c: d0 f7                              bne     L3975
+397c: d0 f7                              bne     src
 397e: 60                                 rts
 
-397f: 38           L397F                 sec
+397f: 38           error                 sec
 3980: a9 08                              lda     #$08
 3982: 60                                 rts
 
-3983: 80           L3983                 .dd1    $80
-3984: 60           L3984                 .dd1    $60
-3985: 00           L3985                 .dd1    $00
-3986: 00           L3986                 .dd1    $00
-3987: 00           L3987                 .dd1    $00
-3988: 00           L3988                 .dd1    $00
-3989: 03           L3989                 .dd1    3
-398a: 00           L398A                 .dd1    $00
-398b: 00 00        L398B                 .dd2    $0000
-398d: 00 00        L398D                 .dd2    $0000
-398f: 00           L398F                 .dd1    $00
-3990: 00           L3990                 .dd1    $00
-3991: 00           L3991                 .dd1    $00
-3992: 00           L3992                 .dd1    $00
-3993: 00           L3993                 .dd1    $00
+                   ; Params for virtual RWTS command. This will be translated into a ProDOS MLI
+                   ; READ_BLOCK or WRITE_BLOCK. The internal RWTS call takes a pointer to this
+                   ; table, although there is only one table.
+3983: 80           rwtscmd               .dd1    $80
+3984: 60           unit                  .dd1    $60                     ;(slot 6 on startup)
+3985: 00 00        rwtsbuf               .dd2    $0000
+3987: 00           track                 .dd1    $00
+3988: 00           sector                .dd1    $00
+                   ; Params for MLI READ_BLOCK and WRITE_BLOCK.
+3989: 03           block_params          .dd1    3
+398a: 00                                 .dd1    $00                     ;unit number
+398b: 00 00                              .dd2    $0000                   ;block buffer
+398d: 00 00                              .dd2    $0000                   ;block number
+398f: 00                                 .dd1    $00
+3990: 00 00        rwtsbuf_tmp?          .dd2    $0000
+3992: 00           blocklo               .dd1    $00
+3993: 00           sector_tmp            .dd1    $00                     ;temp copy of 'sector' used by ts_to_block
 
-3994: a5 74        L3994                 lda     $74
+3994: a5 74        write                 lda     BAS_MEMSIZE+1
 3996: 18                                 clc
-3997: 6d 8f 39                           adc     L398F
-399a: 8d 7a 39                           sta     L3978+2
+3997: 6d 8f 39                           adc     rwtsbuf_tmp?-1
+399a: 8d 7a 39                           sta     dst+2
 399d: a9 00                              lda     #$00
-399f: 8d 79 39                           sta     L3978+1
-39a2: ad 90 39                           lda     L3990
-39a5: 8d 76 39                           sta     L3975+1
-39a8: ad 91 39                           lda     L3991
-39ab: 8d 77 39                           sta     L3975+2
-39ae: 20 73 39                           jsr     L3973
+399f: 8d 79 39                           sta     dst+1
+39a2: ad 90 39                           lda     rwtsbuf_tmp?
+39a5: 8d 76 39                           sta     src+1
+39a8: ad 91 39                           lda     rwtsbuf_tmp?+1
+39ab: 8d 77 39                           sta     src+2
+39ae: 20 73 39                           jsr     copy_sect_buf
 39b1: 20 00 bf                           jsr     P8_MLI
 39b4: 81                                 .dd1    P8_WRITE_BLOCK
-39b5: 89 39                              .dd2    L3989
+39b5: 89 39                              .dd2    block_params
 39b7: 60                                 rts
 
-39b8: 8c 93 39     L39B8                 sty     L3993
-39bb: aa                                 tax
+                   ; On entry, track in A, sector in Y. Returns ProDOS block hi,lo in Y,A. Returns
+                   ; which half of block in X (0 first, 1 second) as one 512-byte block corresponds
+                   ; to two 256-byte sectors.
+                   ; 
+                   ; sector_tmp is a copy of 'sector'. There is some (unnecessary?) indirection
+                   ; where the track,sector is passed in registers instead of using the table they
+                   ; are already stored in, meaning a temp has to be used to save this register.
+                   ; And these registers are loaded via an indirect pointer to the table. But there
+                   ; is only one table, so all the indirection and copies are for no purpose.
+                   ; 
+                   ; TS to block algorithm can be found in B.5 - DOS 3.3 Disk Organization.
+                   ; 
+                   ;       Block = (8 * Track) + Sector Offset
+                   ; 
+                   ;         Sector : 0 1 2 3 4 5 6 7 8 9 A B C D E F
+                   ;  Sector Offset : 0 7 6 6 5 5 4 4 3 3 2 2 1 1 0 7
+                   ;   Half of Block: 1 1 2 1 2 1 2 1 2 1 2 1 2 1 2 2
+                   ; 
+                   ; This section is 95 bytes long. I think it could be made shorter and faster
+                   ; with a 16-byte table lookup of sector offsets, with the block half flag in bit
+                   ; 0 or bit 7 of each offset.
+39b8: 8c 93 39     ts_to_block           sty     sector_tmp              ;save sector
+39bb: aa                                 tax                             ;track in X
 39bc: a0 00                              ldy     #$00
 39be: 98                                 tya
-39bf: ca           L39BF                 dex
-39c0: 30 08                              bmi     L39CA
+39bf: ca           @add8                 dex                             ;multiply track X*8 -> block Y,A
+39c0: 30 08                              bmi     @sector
 39c2: 18                                 clc
 39c3: 69 08                              adc     #$08
-39c5: 90 f8                              bcc     L39BF
+39c5: 90 f8                              bcc     @add8
 39c7: c8                                 iny
-39c8: d0 f5                              bne     L39BF
-39ca: 8d 92 39     L39CA                 sta     L3992
-39cd: a2 00                              ldx     #$00
-39cf: ad 93 39                           lda     L3993
-39d2: d0 04                              bne     L39D8
-39d4: ad 92 39                           lda     L3992
+39c8: d0 f5                              bne     @add8                   ;always
+39ca: 8d 92 39     @sector               sta     blocklo                 ;save A
+39cd: a2 00                              ldx     #$00                    ;equiv. to inx, since X=$FF
+39cf: ad 93 39                           lda     sector_tmp              ;was this sector 0?
+39d2: d0 04                              bne     @sector01
+39d4: ad 92 39                           lda     blocklo                 ;restore A
 39d7: 60                                 rts
 
-39d8: c9 01        L39D8                 cmp     #$01
-39da: d0 0a                              bne     L39E6
-39dc: ad 92 39                           lda     L3992
+39d8: c9 01        @sector01             cmp     #$01                    ;sector 1?
+39da: d0 0a                              bne     @sector0e
+39dc: ad 92 39                           lda     blocklo
 39df: 18                                 clc
-39e0: 69 07                              adc     #$07
-39e2: 90 01                              bcc     L39E5
+39e0: 69 07                              adc     #$07                    ;increase block num by 7
+39e2: 90 01                              bcc     @rts
 39e4: c8                                 iny
-39e5: 60           L39E5                 rts
+39e5: 60           @rts                  rts
 
-39e6: c9 0e        L39E6                 cmp     #$0e
-39e8: d0 05                              bne     L39EF
-39ea: ad 92 39                           lda     L3992
-39ed: e8                                 inx
+39e6: c9 0e        @sector0e             cmp     #$0e                    ;sector E?
+39e8: d0 05                              bne     @sector0f
+39ea: ad 92 39                           lda     blocklo
+39ed: e8                                 inx                             ;just increase X by 1
 39ee: 60                                 rts
 
-39ef: c9 0f        L39EF                 cmp     #$0f
-39f1: d0 0b                              bne     L39FE
-39f3: ad 92 39                           lda     L3992
+39ef: c9 0f        @sector0f             cmp     #$0f                    ;sector F?
+39f1: d0 0b                              bne     @sector_other
+39f3: ad 92 39                           lda     blocklo
 39f6: 18                                 clc
-39f7: 69 07                              adc     #$07
-39f9: 90 01                              bcc     L39FC
+39f7: 69 07                              adc     #$07                    ;increase block num by 7
+39f9: 90 01                              bcc     @ret
 39fb: c8                                 iny
-39fc: e8           L39FC                 inx
+39fc: e8           @ret                  inx                             ;and increase X by 1
 39fd: 60                                 rts
 
-39fe: ad 93 39     L39FE                 lda     L3993
-3a01: 4a                                 lsr     A
-3a02: b0 05                              bcs     L3A09
-3a04: a9 0e                              lda     #$0e
-3a06: e8                                 inx
-3a07: d0 02                              bne     L3A0B
-3a09: a9 0f        L3A09                 lda     #$0f
-3a0b: 38           L3A0B                 sec
-3a0c: ed 93 39                           sbc     L3993
+39fe: ad 93 39     @sector_other         lda     sector_tmp              ;redundant, sector_tmp already in A
+3a01: 4a                                 lsr     A                       ;test even/odd
+3a02: b0 05                              bcs     @odd
+3a04: a9 0e                              lda     #$0e                    ;even sector, subtract $0E
+3a06: e8                                 inx                             ;bump X when even
+3a07: d0 02                              bne     @sub                    ;always
+3a09: a9 0f        @odd                  lda     #$0f                    ;odd sector, subtract $0E+1
+3a0b: 38           @sub                  sec
+3a0c: ed 93 39                           sbc     sector_tmp
+                   NOTE: Check what happens if subtracting $0E from odd sector instead. The discard
+                   of lower bit here is suspicious.
 3a0f: 4a                                 lsr     A
 3a10: 18                                 clc
-3a11: 6d 92 39                           adc     L3992
-3a14: 90 01                              bcc     L3A17
-3a16: c8                                 iny
-3a17: 60           L3A17                 rts
+3a11: 6d 92 39                           adc     blocklo                 ;add A/2 to block num
+3a14: 90 01                              bcc     @rts
+3a16: c8                                 iny                             ;(bump blockhi if wrapped)
+3a17: 60           @rts                  rts
 
-3a18: c6                                 .dd1    $c6
+3a18: c6                                 .junk   1                       ;maybe type-in artifact
